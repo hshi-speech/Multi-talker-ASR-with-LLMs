@@ -96,9 +96,17 @@ def preprocess_and_filter(
             prompt_str, input_str = build_prompt_and_input(prompt, text)
             batch["labels"] = tokenizer(prompt_str + input_str).input_ids
             batch["prompt_ids"] = tokenizer(prompt_str).input_ids[1:]
+            # Number of prompt-prefix tokens in `labels` (after the leading <bos> strip done in the
+            # collator). Equals: K prompt tokens + 5 specials (<bos_prompt>, <eos_prompt>,
+            # <bos_speech>, <eos_speech>, <bos_response>) = len(prompt_ids) above.
+            # The collator uses this to set labels[i, :prompt_token_len[i]] = -100, so prompt tokens
+            # are excluded from the CE loss. Replaces the buggy labels[0]-only masking previously
+            # done inside models/modeling_speech_encoder_decoder_llama.py (~line 716).
+            batch["prompt_token_len"] = len(batch["prompt_ids"])
         else:
             batch["labels"] = tokenizer(text).input_ids
             batch["prompt_ids"] = []
+            batch["prompt_token_len"] = 0
 
         return batch
 

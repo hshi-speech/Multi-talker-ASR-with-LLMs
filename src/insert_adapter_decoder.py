@@ -53,15 +53,23 @@ def insert_adapters(model, model_args, config):
         target_modules = ["k_proj", "q_proj", "v_proj", "o_proj"]
 
     # 2. Construct the LoRA configuration
+    # Note: these args control the *self-attention* LoRA group (PEFT-injected into k/q/v/o_proj).
+    # The cross-attention adapter group has its own args: model_args.r_max / model_args.lora_alpha.
+    r = getattr(model_args, "selfattn_lora_r", 16)
+    lora_alpha = getattr(model_args, "selfattn_lora_alpha", 32)
+    lora_dropout = getattr(model_args, "selfattn_lora_dropout", 0.1)
     lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.1,
+        r=r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         target_modules=target_modules,
         # Enable modules_to_save if you want to keep certain original weights
         # modules_to_save=["lm_head", "embed_tokens", "embed_positions",
         #                  "layernorm_embedding", "encoder"],
     )
+    logger.info(f"Self-attn LoRA config: r={r}, lora_alpha={lora_alpha}, lora_dropout={lora_dropout}, "
+                f"target_modules={len(target_modules)} modules "
+                f"(adapter_only_decoder={getattr(model_args, 'adapter_only_decoder', False)})")
 
     # 3. Log parameter stats before inserting adapters
     logger.info("=" * 48)

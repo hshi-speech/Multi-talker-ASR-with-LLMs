@@ -93,7 +93,6 @@ class WavLMBaseModelOutput(ModelOutput):
 
     last_hidden_state: torch.FloatTensor = None
     encoder_hidden_state: torch.FloatTensor = None
-    wavlm_down_hidden_states: torch.FloatTensor = None
     extract_features: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -246,12 +245,9 @@ class WavLMAdapter(nn.Module):
             layerdrop_prob = np.random.random()
             if not self.training or (layerdrop_prob > self.layerdrop):
                 hidden_states = layer(hidden_states)
-            if(i == 1):
-                wavlm_down_hidden_states = hidden_states
 
         hidden_states = hidden_states.transpose(1, 2)
-        wavlm_down_hidden_states = wavlm_down_hidden_states.transpose(1, 2)
-        return hidden_states, wavlm_down_hidden_states
+        return hidden_states
 
 
 WAVLM_START_DOCSTRING = r"""
@@ -450,7 +446,7 @@ class WavLMModel(WavLMPreTrainedModel):
         hidden_states = encoder_outputs[0]
 
         if self.adapter is not None:
-            hidden_states, wavlm_down_hidden_states = self.adapter(hidden_states)
+            hidden_states = self.adapter(hidden_states)
 
         if not return_dict:
             return (hidden_states, extract_features) + encoder_outputs[1:]
@@ -458,7 +454,6 @@ class WavLMModel(WavLMPreTrainedModel):
         return WavLMBaseModelOutput(
             last_hidden_state=hidden_states,
             encoder_hidden_state=encoder_hidden_states,
-            wavlm_down_hidden_states=wavlm_down_hidden_states,
             extract_features=extract_features,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,

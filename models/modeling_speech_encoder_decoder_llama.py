@@ -161,10 +161,6 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
         self.decoder_cross_attention = getattr(self.config, "decoder_cross_attention", False)
         self.decoder_cross_attention_type = getattr(self.config, "decoder_cross_attention_type", "tiny")
         self.decoder_cross_attention_feature = getattr(self.config, "decoder_cross_attention_feature", "raw")
-        self.decoder_cross_attention_dynamic = getattr(self.config, "decoder_cross_attention_dynamic", "false")
-        self.decoder_cross_attention_dynamic_threshold = getattr(self.config, "decoder_cross_attention_dynamic_threshold", 0.0)
-        self.decoder_cross_attention_dynamic_loss = getattr(self.config, "decoder_cross_attention_dynamic_loss", False)
-        self.decoder_cross_attention_dynamic_ratio = getattr(self.config, "decoder_cross_attention_dynamic_ratio", 0.8)
         self.r_max = getattr(self.config, "r_max", 16)
         self.lora_alpha = getattr(self.config, "lora_alpha", 16)
 
@@ -249,8 +245,6 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
 
         else:
             self.cross_att_adap = None
-
-        self.layer_gate_logits = None
 
         # get encoder output hidden size
         self.encoder_output_dim = getattr(config.encoder, "output_hidden_size", config.encoder.hidden_size)
@@ -556,9 +550,8 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
         elif isinstance(encoder_outputs, tuple):
             encoder_outputs = BaseModelOutput(*encoder_outputs)
 
-        encoder_hidden_states = encoder_outputs[0]
-        wavlm_hidden_stages   = encoder_outputs[1]      # un-downsampled feature
-        wavlm_down_hidden_stages = encoder_outputs[2]
+        encoder_hidden_states = encoder_outputs[0]      # adapter final output (fully downsampled)
+        wavlm_hidden_stages   = encoder_outputs[1]      # WavLM transformer output (un-downsampled, before adapter)
         mixed_encoding_feature = wavlm_hidden_stages
 
         # Here we add serialized CTC
@@ -667,79 +660,46 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
                     dim=1,
                 )   # [B, Lp_total + Tm]
 
+        # Fallback: if the caller did not supply decoder_input_ids (e.g. legacy callers that pass
+        # only `labels`), derive it via shift_tokens_right. The standard training path now provides
+        # decoder_input_ids from the data_collator, so this branch is skipped during training.
         if (labels is not None) and (decoder_input_ids is None and decoder_inputs_embeds is None):
-            # labels-> decoder_input_ids : add  
             decoder_input_ids = shift_tokens_right(
                 labels, self.config.pad_token_id, self.config.decoder_start_token_id
             )
+
+        if labels is not None:
+            # Split decoder_input_ids into per-speaker label segments for the serialized-CTC heads.
             if self.instruct:
-                # TODO: here we only use same prompt, so it should be modified when the prompts are different
                 skip_eosr_ids = decoder_input_ids.masked_fill(
                     decoder_input_ids == self.eosr_token_id,
-                    self.config.pad_token_id
+                    self.config.pad_token_id,
                 )
                 _bosr_pos = (skip_eosr_ids[0] == self.bosr_token_id).nonzero(as_tuple=True)[0]
-                splited_decoder_input_ids = skip_eosr_ids[:, _bosr_pos+1:]
+                splited_decoder_input_ids = skip_eosr_ids[:, _bosr_pos + 1:]
             else:
                 splited_decoder_input_ids = decoder_input_ids[:, 1:]
 
             label_spks, label_spks_lengths = split_k_speakers_and_lengths(
-                    labels=splited_decoder_input_ids,
-                    k_speakers=self.talker_numbers,
-                    sep_id=self.sc_token_id,
-                    pad_token_id=self.config.pad_token_id,
-                    end_token_id=self.config.pad_token_id,
-                    ignore_id=-100,
-                    allow_empty_segment=False,
+                labels=splited_decoder_input_ids,
+                k_speakers=self.talker_numbers,
+                sep_id=self.sc_token_id,
+                pad_token_id=self.config.pad_token_id,
+                end_token_id=self.config.pad_token_id,
+                ignore_id=-100,
+                allow_empty_segment=False,
             )
 
-            # Here we make the speech-padded labels: with self.ignore_token_id (-100)
+            # Prepend `speech_len` -100 positions to align labels with logits after the
+            # speech-embedding insertion that happens inside the LLaMA decoder forward.
+            # NOTE: prompt-prefix masking and EOS insertion are now done in the data_collator
+            # (per-sample, using `prompt_token_len`), replacing the previous buggy in-model logic
+            # which only used labels[0] to compute the prefix size.
             batch, speech_len, _ = encoder_hidden_states.shape
-
-            # Insert <eos>
-            # For input_ids, the <eos> should not be inserted, the <pad> is inserted
-            # <eos> is only inserted into labels
-            decoder_ids_pad = torch.full((batch, 1), self.pad_token_id, device=labels.device)
-            decoder_input_ids = torch.cat((decoder_input_ids, decoder_ids_pad), dim=1)
-            pad_eos = torch.full((batch, 1), self.ignore_token_id, device=labels.device)
-            labels = torch.cat((labels, pad_eos), dim=1)
-
-            mask = (labels == self.ignore_token_id) # self.ignore_token_id = -100
-            first_pad_id = mask.float().argmax(dim=1)
-            # Here we add the <eos> in labels
-            labels[torch.arange(batch), first_pad_id] = eos_token_id = self.config.eos_token_id[0] if isinstance(self.config.eos_token_id, (list, tuple)) else self.config.eos_token_id
-
-            # Compute the length of prompt
-            # !!!! Should be fixed a little bit later
-            # Currently, since all the prompts are same, we directly use one sample to compute the length
-            # TODO: But should be modifed for variable-prompt condition
-            if self.instruct:
-                seq = labels[0]
-                len_prompt = (seq.eq(self.eosp_token_id).nonzero()[0] - seq.eq(self.bosp_token_id).nonzero()[0] - 1).item()
-
-                # The ignore part during computing loss:
-                # (<bos_prompt>, prompt, <eos_prompt>, <bos_speech>, speech_emb, <eos_speech>, <bos_response>)
-                # The corresponding length is:
-                # (1, prompt_length, 1, 1, speech_length, 1, 1) => prompt_length + speech_length + 5
-                # Currently, the labels is:
-                # (<bos_prompt>, prompt, <eos_prompt>, <bos_speech>, speech_emb, <eos_speech>, <bos_response>, transcription)
-                # For simple processing, we directly generate a mask for the above part (without transcription)
-                # and use the text contents (after <bos_response>)
-                ignore_contents_mask = torch.full((batch, speech_len + len_prompt + 5), self.config.ignore_token_id, device=labels.device)
-                bos_response_idx = labels[0].eq(self.bosr_token_id).nonzero()[0]
-                contents = labels[:, bos_response_idx+1:]
-                labels = torch.cat((ignore_contents_mask, contents), dim=1)
-
-            else:
-                # The ignore part during computing loss: 
-                # (speech_emb)
-                # The corresponding length is:
-                # (speech_length) => speech_length
-                # Currently, the labels is:
-                # (prompt, text)
-                # For simple processing, we directly generate a mask for the above part
-                ignore_contents_mask = torch.full((batch, speech_len), self.config.ignore_token_id, device=labels.device)
-                labels = torch.cat((ignore_contents_mask, labels), dim=1)
+            ignore_contents_mask = torch.full(
+                (batch, speech_len), self.config.ignore_token_id, device=labels.device
+            )
+            labels = torch.cat((ignore_contents_mask, labels), dim=1)
 
         # Decode
         decoder_outputs = self.decoder(
@@ -759,9 +719,6 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
             acoustic_conf=acoustic_conf,
             acoustic_ctc_mask=encoder_attention_mask_ctc,
             adaptation_modules=self.cross_att_adap,
-            adaptation_layer_gate_modules=self.decoder_cross_attention_dynamic, # --> Currently, True/False
-            adaptation_layer_gate_modules_threshold=self.decoder_cross_attention_dynamic_threshold,
-            adaptation_layer_gate_modules_threshold_ratio=self.decoder_cross_attention_dynamic_ratio,
             ctc_modules=self.serialized_ctc,
             **kwargs_decoder,
         )
@@ -770,7 +727,10 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
         loss = None
         ctc_per_head = None
         if labels is not None:
-            shared_params = list(self.encoder.parameters()) + list(self.separator.parameters())
+            # NOTE: `shared_params` (previously built from encoder + separator params) was removed.
+            # It was only consumed by a commented-out PCGrad-style grad-conflict debug block in
+            # losses.py, so building it served no purpose and crashed with AttributeError when
+            # talker_ctc=False (self.separator is only created in the talker_ctc=True branch).
             loss = self.losses(
                 decoder_outputs=decoder_outputs,
                 labels=labels,
@@ -780,11 +740,7 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
                 encoder_attention_mask_ctc=encoder_attention_mask_ctc,
                 label_spks=label_spks,
                 label_spks_lengths=label_spks_lengths,
-                cross_att_layer_gate=self.layer_gate_logits,
-                cross_att_layer_gate_loss=self.decoder_cross_attention_dynamic_loss,
                 talker_numbers=self.talker_numbers,
-                cross_att_layer_gate_ratio=self.decoder_cross_attention_dynamic_ratio,
-                shared_params=shared_params,
                 return_dict=return_dict,
             )
 

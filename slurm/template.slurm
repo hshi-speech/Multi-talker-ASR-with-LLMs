@@ -32,10 +32,6 @@ for arg in "$@"; do
     decoder_cross_attention=*)        decoder_cross_attention="${arg#*=}" ;;
     decoder_cross_attention_type=*)   decoder_cross_attention_type="${arg#*=}" ;;
     decoder_cross_attention_feature=*) decoder_cross_attention_feature="${arg#*=}" ;;
-    decoder_cross_attention_dynamic=*) decoder_cross_attention_dynamic="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_threshold=*) decoder_cross_attention_dynamic_threshold="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_ratio=*) decoder_cross_attention_dynamic_ratio="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_loss=*) decoder_cross_attention_dynamic_loss="${arg#*=}" ;;
     adapter_only_decoder=*)           adapter_only_decoder="${arg#*=}" ;;
     per_device_train_batch_size=*)    per_device_train_batch_size="${arg#*=}" ;;
     per_device_eval_batch_size=*)     per_device_eval_batch_size="${arg#*=}" ;;
@@ -83,11 +79,6 @@ separator_hidden="${separator_hidden-796}"
 decoder_cross_attention="${decoder_cross_attention-false}"
 decoder_cross_attention_type="${decoder_cross_attention_type-tiny}"
 decoder_cross_attention_feature="${decoder_cross_attention_feature-raw}"
-decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic-false}"
-decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold-0.0}"
-decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio-0.8}"
-decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss-false}"
-
 r_max="${r_max-8}"
 lora_alpha="${lora_alpha-8}"
 
@@ -144,10 +135,6 @@ bash ../run.sh \
   decoder_cross_attention=$decoder_cross_attention \
   decoder_cross_attention_type=$decoder_cross_attention_type \
   decoder_cross_attention_feature=$decoder_cross_attention_feature \
-  decoder_cross_attention_dynamic=$decoder_cross_attention_dynamic \
-  decoder_cross_attention_dynamic_threshold=$decoder_cross_attention_dynamic_threshold \
-  decoder_cross_attention_dynamic_ratio=$decoder_cross_attention_dynamic_ratio \
-  decoder_cross_attention_dynamic_loss=$decoder_cross_attention_dynamic_loss \
   r_max=${r_max} \
   lora_alpha=${lora_alpha} \
   cache_dir=$cache_dir \

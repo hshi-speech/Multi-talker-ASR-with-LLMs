@@ -33,7 +33,7 @@ from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-from transformers.modeling_utils import PreTrainedModel
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from transformers.processing_utils import Unpack
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils import (
@@ -353,10 +353,6 @@ class LlamaDecoderLayer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         adaptation_module: Optional[Sequence[nn.Module]] = None,
-        adaptation_layer_gate_module: Optional[Sequence[nn.Module]] = None,
-        adaptation_layer_gate_modules_threshold: torch.FloatTensor = None,
-        keep_this_layer: Optional[bool] = False,
-        drop_flag: torch.FloatTensor = None, 
         acoustic_mem: torch.FloatTensor = None,
         acoustic_sep: torch.FloatTensor = None,
         acoustic_mask: torch.FloatTensor = None,

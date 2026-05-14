@@ -42,11 +42,6 @@ partial_others_unfreeze="q_lora_A,q_lora_B,q_rank_logits,out_lora_A,out_lora_B,o
 decoder_cross_attention=true
 decoder_cross_attention_type=adapgatetiny
 decoder_cross_attention_feature=sep
-decoder_cross_attention_dynamic=false
-decoder_cross_attention_dynamic_threshold=0.1
-decoder_cross_attention_dynamic_ratio=0.1
-decoder_cross_attention_dynamic_loss=false
-
 r_max=8
 lora_alpha=4
 
@@ -65,7 +60,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -77,7 +72,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -90,7 +85,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -102,7 +97,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -118,7 +113,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -130,7 +125,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -143,7 +138,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"
@@ -155,7 +150,7 @@ sbatch \
   ${EXCLUDE_NODES:+--exclude="${EXCLUDE_NODES// /}"} \
   --job-name="${dec}-${corp}-${ins}" \
   template.slurm \
-  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
+  decoder="$dec" corpus="$corp" instruct="$ins" talker_ctc="$ctc" talker_numbers="$tn" pretrain_model_path="${pmp:-}" encoder_freeze="${ef:-}" train_mode="${train_mode:-}" adapter_only_decoder="${adapter_only_decoder:-}" per_device_train_batch_size="$per_device_train_batch_size" per_device_eval_batch_size="$per_device_eval_batch_size" stage="${stage:-}" stop_stage="${stop_stage:-}" decoder_cross_attention="${decoder_cross_attention}" decoder_cross_attention_type="${decoder_cross_attention_type}" decoder_cross_attention_feature="${decoder_cross_attention_feature}" talker_ctc_refine="${talker_ctc_refine}" r_max="${r_max}" lora_alpha="${lora_alpha}" \
   partial_encoder_unfreeze="$partial_encoder_unfreeze" \
   partial_decoder_unfreeze="$partial_decoder_unfreeze" \
   partial_others_unfreeze="$partial_others_unfreeze"

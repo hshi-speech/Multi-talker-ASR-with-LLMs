@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-talker ASR with LLMs — Workflow</title>
+<style>
+  :root {
+    --bg: #fbfbfd;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --muted: #6e6e73;
+    --line: #d2d2d7;
+    --accent: #0a84ff;
+    --accent-soft: #e4f0ff;
+    --green: #34c759;
+    --orange: #ff9500;
+    --pink: #ff375f;
+    --purple: #af52de;
+    --teal: #30b0c7;
+    --gray: #f5f5f7;
+    --code-bg: #1d1d1f;
+    --code-ink: #f5f5f7;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    max-width: 1320px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+  nav.toc {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow: auto;
+    padding: 24px 16px;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+  }
+  nav.toc h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: section;
+  }
+  nav.toc li {
+    margin: 0 0 4px;
+  }
+  nav.toc a {
+    display: block;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13.5px;
+  }
+  nav.toc a:hover { background: var(--gray); }
+  main { padding: 36px 44px 80px; min-width: 0; }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 44px 0 12px;
+    letter-spacing: -0.01em;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+  }
+  h3 {
+    font-size: 17px;
+    margin: 24px 0 8px;
+    color: var(--ink);
+  }
+  p { margin: 8px 0; }
+  .lede { color: var(--muted); font-size: 16px; }
+  code, pre, .mono {
+    font: 13px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  code {
+    background: var(--gray);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--gray);
+  }
+  td code { font-size: 12.5px; }
+  /* Pipeline cards */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 16px;
+    align-items: stretch;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .stage .num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 8px;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .stage .body h4 { margin: 0 0 4px; font-size: 16px; }
+  .stage .meta { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+  .stage .meta code { background: var(--accent-soft); color: var(--accent); }
+  /* Arch diagram */
+  .arch {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin: 12px 0;
+    overflow-x: auto;
+  }
+  .arch svg { display: block; max-width: 100%; height: auto; }
+  /* Flow lists */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .flow-step {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .flow-step .tag {
+    text-align: center;
+    background: var(--gray);
+    color: var(--muted);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .flow-step p { margin: 0; }
+  .flow-arrow {
+    text-align: center;
+    color: var(--muted);
+    margin: -4px 0 -4px 20px;
+    font-size: 14px;
+  }
+  /* File tree */
+  .tree {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin: 12px 0;
+    font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .file { color: var(--ink); }
+  .tree .note { color: var(--muted); font-style: italic; padding-left: 8px; }
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  .badge.green { background: #d4f5dc; color: #1d7e3e; }
+  .badge.orange { background: #ffe9cc; color: #a4540a; }
+  .badge.pink { background: #ffd9e2; color: #b41840; }
+  .badge.gray { background: var(--gray); color: var(--muted); }
+  /* Two-col helpers */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav.toc { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 24px 16px 60px; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+  /* Callout */
+  .callout {
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .callout.warn { background: #fff4e0; border-left-color: var(--orange); }
+  .callout.muted { background: var(--gray); border-left-color: var(--line); color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#overview">1. Overview</a></li>
+      <li><a href="#pipeline">2. End-to-end pipeline</a></li>
+      <li><a href="#architecture">3. Model architecture</a></li>
+      <li><a href="#training-flow">4. Training data flow</a></li>
+      <li><a href="#inference-flow">5. Inference data flow</a></li>
+      <li><a href="#training-modes">6. Training modes</a></li>
+      <li><a href="#cross-attn">7. Cross-attention adapters</a></li>
+      <li><a href="#filemap">8. File map</a></li>
+      <li><a href="#flags">9. Key CLI flags</a></li>
+      <li><a href="#run-recipes">10. Run recipes</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <h1>Multi-talker ASR with LLMs</h1>
+    <p class="lede">
+      A WavLM-encoder + LLaMA-decoder speech recognition system for overlapped multi-speaker audio,
+      trained with Serialized Output Training (SOT) and optional Serialized CTC supervision.
+    </p>
+
+    <!-- =========================================================== -->
+    <h2 id="overview">1. Overview</h2>
+    <p>
+      The system reads a single mixed audio waveform containing <em>N</em> overlapping speakers and produces
+      a single text stream containing all transcriptions concatenated, separated by a special <code>&lt;sc&gt;</code> token.
+      A WavLM encoder turns audio into acoustic features; an optional separator head splits those features into
+      <em>N</em> per-speaker streams supervised by per-speaker CTC heads; a LLaMA decoder generates the serialized
+      text autoregressively. Hybrid training combines attention CE loss on the LLaMA decoder with CTC loss on the
+      separator heads.
+    </p>
+    <div class="grid-2">
+      <div>
+        <h3>Datasets supported</h3>
+        <ul>
+          <li><strong>LibriMix</strong> 2-speaker (libri2mix)</li>
+          <li><strong>LibriMix</strong> 3-speaker (libri3mix)</li>
+          <li>Clean and noisy variants</li>
+        </ul>
+      </div>
+      <div>
+        <h3>LLM backends</h3>
+        <ul>
+          <li>LLaMA-3.2-1B / 3B</li>
+          <li>LLaMA-3.2-1B-Instruct / 3B-Instruct</li>
+          <li>LLaMA-3.1-8B / 8B-Instruct</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- =========================================================== -->
+    <h2 id="pipeline">2. End-to-end pipeline</h2>
+    <p>The full workflow is driven by <code>run.sh</code> (or <code>run_librispeechmix.sh</code>) and divided into
+      six stages selected with <code>stage=X stop_stage=Y</code>.</p>
+
+    <div class="pipeline">
+      <div class="stage">
+        <div class="num">1</div>
+        <div class="body">
+          <h4>Data preparation</h4>
+          <p class="meta">Script: <code>utils/generate_dataset.py</code> &nbsp;·&nbsp; Output: <code>datasets/libri{N}mix_*/</code></p>
+          <p>Walks the LibriMix folder, builds an HF <code>DatasetDict</code> with <code>audio</code>, <code>text</code>,
+          <code>id</code>, and <code>prompt</code> fields per sample. The prompt defaults to
+          <em>“TRANSCRIBE THE PROVIDED AUDIO INTO ACCURATE TEXT”</em>.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="num">2</div>
+        <div class="body">
+          <h4>Pretrained AED assembly</h4>
+          <p class="meta">Script: <code>utils/create_from_pretrained.py</code> &nbsp;·&nbsp; Output: <code>dump/&lt;encoder&gt;-&lt;decoder&gt;/</code></p>
+          <p>Combines a WavLM encoder (<code>microsoft/wavlm-large</code>) with a LLaMA decoder into a
+            <code>SpeechEncoderDecoderModelLlama</code>. Adds special tokens (<code>&lt;bos_prompt&gt;</code>,
+            <code>&lt;eos_prompt&gt;</code>, <code>&lt;bos_speech&gt;</code>, <code>&lt;eos_speech&gt;</code>,
+            <code>&lt;bos_response&gt;</code>, <code>&lt;eos_response&gt;</code>, <code>&lt;sc&gt;</code>),
+            wires up the per-speaker CTC heads, separator, and writes the initial checkpoint.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="num">3</div>
+        <div class="body">
+          <h4>Fine-tuning</h4>
+          <p class="meta">Script: <code>finetune_asr.py</code> &nbsp;·&nbsp; Launch: <code>torch.distributed.launch --nproc_per_node=$NGPU</code></p>
+          <p>Loads the pretrained AED + dataset, runs preprocessing through
+            <code>vectorized_dataset_utils.preprocess_and_filter</code>, applies LoRA via
+            <code>insert_adapter_decoder.insert_adapters</code>, freezes/unfreezes selected params via
+            <code>unfreeze_utils.unfreeze_selected_params</code>, and trains with a custom
+            <code>Seq2SeqTrainer</code> that supports per-head CTC + optional PCGrad. Saves the final model and
+            (if LoRA is used) merges adapters with <code>utils/merge_adapter.py</code>.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="num">4</div>
+        <div class="body">
+          <h4>Inference (attention decoder)</h4>
+          <p class="meta">Script: <code>inference_asr.py</code> &nbsp;·&nbsp; WER: <code>utils/compute-wer.py</code></p>
+          <p>Loads the fine-tuned model, runs autoregressive generation over the eval / test splits sample-by-sample,
+            writes <code>{split}_label.text</code> and <code>{split}_decod.text</code>, then computes WER.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="num">5</div>
+        <div class="body">
+          <h4>CTC-only decoding</h4>
+          <p class="meta">Script: <code>inference_asr.py --ctc_decoding=true</code></p>
+          <p>Decodes directly from the per-speaker CTC heads (greedy / argmax with blank+dup removal) instead of the
+            attention decoder. Useful for ablation against the hybrid output.</p>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="num">6</div>
+        <div class="body">
+          <h4>Multi-GPU inference / pseudo-label generation</h4>
+          <p class="meta">Script: <code>inference_asr_gpus.py</code></p>
+          <p>Distributed eval: shards the eval set across GPUs (<code>Dataset.shard</code>), writes per-rank
+            output files, and merges them on rank 0. Used to produce decoded outputs for the train set as
+            pseudo-labels for downstream experiments.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================== -->
+    <h2 id="architecture">3. Model architecture</h2>
+    <p>The model is a <code>SpeechEncoderDecoderModelLlama</code> with three computational paths: encoder, separator + CTC heads, and decoder.</p>
+
+    <div class="arch">
+      <svg viewBox="0 0 1100 540" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="#6e6e73"/>
+          </marker>
+          <style>
+            .box  { fill: #ffffff; stroke: #d2d2d7; stroke-width: 1.2; rx: 8; ry: 8; }
+            .enc  { fill: #e4f0ff; stroke: #0a84ff; }
+            .sep  { fill: #fff4d4; stroke: #ff9500; }
+            .ctc  { fill: #ffd9e2; stroke: #ff375f; }
+            .dec  { fill: #e7f7eb; stroke: #34c759; }
+            .lora { fill: #f0e4ff; stroke: #af52de; }
+            .loss { fill: #1d1d1f; stroke: #1d1d1f; }
+            .lbl  { font: 600 13px -apple-system, system-ui, sans-serif; fill: #1d1d1f; }
+            .lblw { font: 600 13px -apple-system, system-ui, sans-serif; fill: #ffffff; }
+            .sub  { font: 11px -apple-system, system-ui, sans-serif; fill: #6e6e73; }
+            .subw { font: 11px -apple-system, system-ui, sans-serif; fill: #c7c7cc; }
+            .arrow{ stroke: #6e6e73; stroke-width: 1.4; fill: none; }
+            .tag  { font: 600 10px ui-monospace, Menlo, monospace; fill: #6e6e73; }
+          </style>
+        </defs>
+
+        <!-- Audio input -->
+        <rect class="box" x="20" y="240" width="120" height="60"/>
+        <text class="lbl" x="80" y="266" text-anchor="middle">Audio mixture</text>
+        <text class="sub" x="80" y="285" text-anchor="middle">16 kHz waveform</text>
+
+        <!-- WavLM Encoder -->
+        <rect class="box enc" x="180" y="180" width="180" height="180"/>
+        <text class="lbl" x="270" y="208" text-anchor="middle">WavLM Encoder</text>
+        <text class="sub" x="270" y="230" text-anchor="middle">conv feature extractor</text>
+        <text class="sub" x="270" y="248" text-anchor="middle">+ transformer (24 layers)</text>
+        <text class="sub" x="270" y="266" text-anchor="middle">+ post-CNN adapter</text>
+        <text class="tag" x="270" y="295" text-anchor="middle">models/modeling_wavlm.py</text>
+        <text class="sub" x="270" y="330" text-anchor="middle">last_hidden_state (downsampled)</text>
+        <text class="sub" x="270" y="346" text-anchor="middle">encoder_hidden_state (raw)</text>
+
+        <!-- Separator -->
+        <rect class="box sep" x="410" y="60" width="180" height="100"/>
+        <text class="lbl" x="500" y="88" text-anchor="middle">Separator</text>
+        <text class="sub" x="500" y="108" text-anchor="middle">LSTM × N talkers</text>
+        <text class="sub" x="500" y="124" text-anchor="middle">N parallel feature streams</text>
+        <text class="tag" x="500" y="150" text-anchor="middle">models/separator.py</text>
+
+        <!-- CTC heads -->
+        <rect class="box ctc" x="640" y="60" width="170" height="100"/>
+        <text class="lbl" x="725" y="88" text-anchor="middle">Per-talker CTC heads</text>
+        <text class="sub" x="725" y="108" text-anchor="middle">N × Linear(D → vocab+1)</text>
+        <text class="sub" x="725" y="124" text-anchor="middle">CTCLoss(reduction="none")</text>
+        <text class="tag" x="725" y="150" text-anchor="middle">models/ctc.py</text>
+
+        <!-- enc_to_dec_proj -->
+        <rect class="box" x="410" y="240" width="120" height="60"/>
+        <text class="lbl" x="470" y="268" text-anchor="middle">enc_to_dec_proj</text>
+        <text class="sub" x="470" y="285" text-anchor="middle">Linear projection</text>
+
+        <!-- LLaMA Decoder -->
+        <rect class="box dec" x="580" y="180" width="320" height="200"/>
+        <text class="lbl" x="740" y="208" text-anchor="middle">LLaMA Decoder</text>
+        <text class="sub" x="740" y="226" text-anchor="middle">N transformer layers (causal)</text>
+        <!-- inside dec: self-attn LoRA + cross-attn adapter -->
+        <rect class="box lora" x="600" y="240" width="135" height="60"/>
+        <text class="lbl" x="667" y="260" text-anchor="middle">Self-Attn + LoRA</text>
+        <text class="sub" x="667" y="278" text-anchor="middle">k/q/v/o_proj</text>
+        <text class="tag" x="667" y="293" text-anchor="middle">selfattn_lora_r/_alpha</text>
+        <rect class="box lora" x="745" y="240" width="135" height="60"/>
+        <text class="lbl" x="813" y="260" text-anchor="middle">Cross-Attn Adapter</text>
+        <text class="sub" x="813" y="278" text-anchor="middle">tiny / gate / adapgate /</text>
+        <text class="sub" x="813" y="293" text-anchor="middle">ctcaware</text>
+        <text class="sub" x="740" y="335" text-anchor="middle">lm_head → logits</text>
+        <text class="tag" x="740" y="356" text-anchor="middle">models/modeling_llama.py</text>
+
+        <!-- Output: tokens -->
+        <rect class="box" x="940" y="240" width="140" height="60"/>
+        <text class="lbl" x="1010" y="266" text-anchor="middle">Token stream</text>
+        <text class="sub" x="1010" y="285" text-anchor="middle">spk1 &lt;sc&gt; spk2 &lt;sc&gt; ...</text>
+
+        <!-- Loss boxes -->
+        <rect class="box loss" x="640" y="430" width="170" height="50"/>
+        <text class="lblw" x="725" y="453" text-anchor="middle">CE attention loss</text>
+        <text class="subw" x="725" y="470" text-anchor="middle">cross-entropy on labels</text>
+
+        <rect class="box loss" x="410" y="430" width="170" height="50"/>
+        <text class="lblw" x="495" y="453" text-anchor="middle">CTC serialized loss</text>
+        <text class="subw" x="495" y="470" text-anchor="middle">per-head, fixed-order</text>
+
+        <rect class="box loss" x="870" y="430" width="170" height="50"/>
+        <text class="lblw" x="955" y="453" text-anchor="middle">Hybrid total</text>
+        <text class="subw" x="955" y="470" text-anchor="middle">α·attn + (1-α)·ctc</text>
+
+        <!-- Arrows -->
+        <path class="arrow" d="M140 270 L180 270" marker-end="url(#arr)"/>
+        <path class="arrow" d="M360 260 L410 270" marker-end="url(#arr)"/>
+        <!-- to separator -->
+        <path class="arrow" d="M310 180 L310 110 L410 110" marker-end="url(#arr)"/>
+        <path class="arrow" d="M590 110 L640 110" marker-end="url(#arr)"/>
+        <!-- to enc_to_dec_proj -->
+        <path class="arrow" d="M530 270 L580 270" marker-end="url(#arr)"/>
+        <!-- decoder out -->
+        <path class="arrow" d="M900 270 L940 270" marker-end="url(#arr)"/>
+        <!-- separator to cross-attn (acoustic memory) -->
+        <path class="arrow" d="M580 130 Q780 130 813 240" marker-end="url(#arr)"/>
+        <text class="tag" x="700" y="175" text-anchor="middle">acoustic_mem / acoustic_sep</text>
+
+        <!-- losses -->
+        <path class="arrow" d="M725 360 L725 430" marker-end="url(#arr)"/>
+        <path class="arrow" d="M725 160 L495 160 L495 430" marker-end="url(#arr)"/>
+        <path class="arrow" d="M580 455 L640 455" marker-end="url(#arr)"/>
+        <path class="arrow" d="M810 455 L870 455" marker-end="url(#arr)"/>
+      </svg>
+    </div>
+
+    <h3>What flows between modules</h3>
+    <table>
+      <tr><th>Tensor</th><th>Shape</th><th>Produced by</th><th>Consumed by</th></tr>
+      <tr><td><code>encoder_hidden_states</code></td><td>B × T<sub>down</sub> × D</td><td>WavLM adapter (final)</td><td>decoder cross-attention</td></tr>
+      <tr><td><code>wavlm_hidden_stages</code></td><td>B × T<sub>raw</sub> × D</td><td>WavLM transformer (pre-adapter)</td><td>separator</td></tr>
+      <tr><td><code>sep_hidden_states</code></td><td>list of N × (B × T × D)</td><td>separator</td><td>CTC heads + cross-attn adapter (when feature=sep)</td></tr>
+      <tr><td><code>label_spks / label_spks_lengths</code></td><td>list of N tensors</td><td><code>split_k_speakers_and_lengths</code> on <code>&lt;sc&gt;</code> token</td><td>CTC heads</td></tr>
+      <tr><td><code>decoder_input_ids</code></td><td>B × L</td><td>data collator (shift-right of full token sequence)</td><td>decoder</td></tr>
+      <tr><td><code>labels</code></td><td>B × L</td><td>data collator (prompt positions → -100)</td><td>CE loss</td></tr>
+    </table>
+
+    <!-- =========================================================== -->
+    <h2 id="training-flow">4. Training data flow</h2>
+    <p>From a single audio sample to a backward pass:</p>
+
+    <div class="flow">
+      <div class="flow-step"><div class="tag">1</div>
+        <p><code>generate_dataset.py</code> emits each row as <code>{id, audio, text, prompt}</code>.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">2</div>
+        <p><code>vectorized_dataset_utils.preprocess_and_filter</code> converts audio → <code>input_values</code> via
+        <code>feature_extractor</code>, builds <code>labels</code> = <code>tokenizer(prompt_str + input_str).input_ids</code>,
+        stores <code>prompt_ids</code> and <code>prompt_token_len</code>. Filters by duration.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">3</div>
+        <p><code>DataCollatorSpeechSeq2SeqWithPadding</code> pads <code>input_values</code>, strips the leading
+        <code>&lt;bos&gt;</code> from labels, builds <code>decoder_input_ids</code> (shift-right equivalent),
+        appends an EOS sentinel, then sets <code>labels[i, :prompt_token_len[i]] = -100</code> per sample.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">4</div>
+        <p><code>Seq2SeqTrainer.training_step</code> forwards through the model:
+          encoder → (optional separator + CTC) → decoder.
+          The model prepends <code>speech_len</code> of -100 to labels to align with the post-speech-insertion
+          decoder logits.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">5</div>
+        <p><code>HybridLoss</code> computes
+          <code>loss_attn = CE(logits, labels)</code>,
+          <code>loss_ctc = mean over heads of mean-over-batch CTC</code>, and combines as
+          <code>α·loss_attn + (1-α)·loss_ctc</code>.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">6</div>
+        <p>Trainer optionally projects CTC head gradients via PCGrad before <code>accelerator.backward(loss)</code>,
+          clips, steps optimizer + LR scheduler, logs.</p></div>
+    </div>
+
+    <!-- =========================================================== -->
+    <h2 id="inference-flow">5. Inference data flow</h2>
+    <div class="flow">
+      <div class="flow-step"><div class="tag">1</div>
+        <p>Eval split loaded from <code>datasets/{corpus}/{validation,test}</code> via <code>load_from_disk</code>.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">2</div>
+        <p>For each sample: <code>feature_extractor(audio)</code> → <code>input_features</code> on GPU;
+          <code>tokenizer(prompt_str)[1:]</code> → <code>prompt_ids</code>.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">3</div>
+        <p>Either <code>model.generate(inputs=input_features, prompt_ids=prompt_ids, max_length=150, num_beams=1)</code>
+          (attention decoder, custom <code>GenerationMixin_Instruct</code> in <code>utils/generation_utils.py</code>)
+          or <code>model.generate_ctc(...)</code> for CTC-only decoding
+          (<code>GenerationMixin_CTC</code> in <code>utils/generation_ctc_utils.py</code>).</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">4</div>
+        <p>Decoded text post-processed: special-token filtering, EOS trim, write to
+          <code>{split}_decod.text</code> alongside <code>{split}_label.text</code>.</p></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step"><div class="tag">5</div>
+        <p><code>utils/compute-wer.py</code> computes per-utterance and corpus-level WER, writes
+          <code>{split}_decod.wer</code>.</p></div>
+    </div>
+
+    <!-- =========================================================== -->
+    <h2 id="training-modes">6. Training modes</h2>
+    <p>The <code>train_mode</code> flag selects which loss is active:</p>
+    <table>
+      <tr><th>Mode</th><th>Active loss</th><th>What trains</th><th>Typical use</th></tr>
+      <tr><td><code>attention</code></td><td>CE only</td><td>Decoder + adapters + projection</td><td>Pure SOT baseline</td></tr>
+      <tr><td><code>ctc</code></td><td>CTC only</td><td>Encoder + separator + CTC heads</td><td>Pretrain separator before LLM fine-tune</td></tr>
+      <tr><td><code>hybrid</code></td><td>α·CE + (1-α)·CTC</td><td>Everything trainable</td><td>Main training recipe</td></tr>
+    </table>
+    <p>The <code>α</code> mixing weight is <code>config.ctc_alpha</code> (default 0.7 in <code>HybridLoss</code>),
+      passed at construction in <code>modeling_speech_encoder_decoder_llama.py</code>.</p>
+
+    <h3>Freeze policy when <code>train_mode=ctc</code></h3>
+    <p>In CTC mode, <code>finetune_asr.py</code> freezes the entire model, then <code>unfreeze_selected_params</code>
+      enables only the encoder/separator/CTC components (no LoRA insertion). In hybrid/attention mode, LoRA is
+      injected via <code>insert_adapters</code> and additional partial-unfreeze rules apply.</p>
+
+    <!-- =========================================================== -->
+    <h2 id="cross-attn">7. Cross-attention adapter variants</h2>
+    <p>When <code>decoder_cross_attention=true</code>, an adapter module is inserted into each decoder layer that
+      cross-attends to the encoder's acoustic memory between self-attention and FFN. The variant is selected by
+      <code>decoder_cross_attention_type</code>:</p>
+    <table>
+      <tr><th>Type</th><th>Module</th><th>Behavior</th></tr>
+      <tr><td><code>tiny</code></td><td><code>TinyCrossAttnAdapter</code></td>
+        <td>Plain Q/K/V projection + LN(hidden + cross(hidden, mem)). No gate.</td></tr>
+      <tr><td><code>gatetiny</code></td><td><code>GatedTinyCrossAttnAdapter</code></td>
+        <td>Tiny + scalar sigmoid gate, init -2 (≈0.12). Mixes refined and original hidden states.</td></tr>
+      <tr><td><code>adapgatetiny</code></td><td><code>AdapGatedTinyCrossAttnAdapter</code></td>
+        <td>Gated + adaptive-rank LoRA on Q / KV / Out projections. Controlled by <code>r_max</code> and <code>lora_alpha</code>.</td></tr>
+      <tr><td><code>ctcaware</code></td><td><code>CTCAwareTinyCrossAttnAdapter</code></td>
+        <td>Tiny + injects CTC-confidence as both log-bias on scores and multiplicative reweight after softmax.</td></tr>
+    </table>
+    <p>The <code>decoder_cross_attention_feature</code> flag chooses what's used as the cross-attention memory:</p>
+    <ul>
+      <li><code>raw</code> — concatenated WavLM features (the same as the regular encoder output).</li>
+      <li><code>sep</code> — concatenated per-talker separator features (gives the decoder per-speaker information).</li>
+    </ul>
+
+    <!-- =========================================================== -->
+    <h2 id="filemap">8. File map</h2>
+    <div class="tree">
+<span class="dir">Multi-talker-ASR-with-LLMs/</span>
+├── <span class="file">finetune_asr.py</span>            <span class="note">stage 3 entry — fine-tuning</span>
+├── <span class="file">inference_asr.py</span>           <span class="note">stage 4/5 entry — single-GPU inference</span>
+├── <span class="file">inference_asr_gpus.py</span>      <span class="note">stage 6 entry — multi-GPU sharded inference</span>
+├── <span class="file">encoder_extract.py</span>         <span class="note">extract sub-state-dict (encoder/separator/ctc)</span>
+├── <span class="file">run.sh</span>                     <span class="note">main orchestrator: stages 1-6</span>
+├── <span class="file">run_librispeechmix.sh</span>      <span class="note">LibriMix-specific inference wrapper</span>
+│
+├── <span class="dir">models/</span>
+│   ├── <span class="file">modeling_speech_encoder_decoder_llama.py</span>   <span class="note">glue model: encoder ↔ separator ↔ CTC ↔ decoder</span>
+│   ├── <span class="file">modeling_wavlm.py</span>                          <span class="note">WavLM with custom adapter output</span>
+│   ├── <span class="file">modeling_llama.py</span>                          <span class="note">LLaMA model with adapter hooks</span>
+│   ├── <span class="file">llama_modules.py</span>                           <span class="note">LLaMA layer/attention internals</span>
+│   ├── <span class="file">separator.py</span>                               <span class="note">LSTM separator → N streams</span>
+│   ├── <span class="file">ctc.py</span>                                     <span class="note">CTC head + CTCLoss wrapper</span>
+│   ├── <span class="file">losses.py</span>                                  <span class="note">HybridLoss: CE + per-head CTC</span>
+│   ├── <span class="file">tiny_crossatt_module.py</span>                    <span class="note">cross-attn adapter: tiny</span>
+│   ├── <span class="file">gate_tiny_crossatt_module.py</span>               <span class="note">cross-attn adapter: gated tiny</span>
+│   ├── <span class="file">adap_gate_tiny_crossatt_module.py</span>          <span class="note">cross-attn adapter: adaptive-rank LoRA + gate</span>
+│   ├── <span class="file">ctcaware_crossatt_module.py</span>                <span class="note">cross-attn adapter: CTC-confidence aware</span>
+│   ├── <span class="file">ctc_prompt.py</span>                              <span class="note">CTC prefix construction for ctcprompt bridge</span>
+│   ├── <span class="file">refiners_ctcprefix.py</span>                      <span class="note">CTC-prefix bridge refiners</span>
+│   └── <span class="file">refiners_weightsconcat.py</span>                  <span class="note">per-speaker feature refiners</span>
+│
+├── <span class="dir">src/</span>
+│   ├── <span class="file">arguments.py</span>                <span class="note">ModelArguments + DataTrainingArguments dataclasses</span>
+│   ├── <span class="file">data_collator.py</span>            <span class="note">audio padding + label/prompt masking + decoder_input_ids build</span>
+│   ├── <span class="file">dataset_loader.py</span>           <span class="note">load_dataset_or_fail wrapper</span>
+│   ├── <span class="file">feature_extractor_loader.py</span> <span class="note">WavLM feature extractor loader</span>
+│   ├── <span class="file">tokenizer_loader.py</span>         <span class="note">LLaMA tokenizer loader</span>
+│   ├── <span class="file">config_loader.py</span>            <span class="note">HF config loader with custom overrides</span>
+│   ├── <span class="file">model_loader.py</span>             <span class="note">SpeechEncoderDecoderModelLlama.from_pretrained</span>
+│   ├── <span class="file">insert_adapter_decoder.py</span>   <span class="note">PEFT LoRA injection into decoder self-attn</span>
+│   └── <span class="file">trainer_seq2seq.py</span>          <span class="note">custom Seq2SeqTrainer (PCGrad, per-head CTC, etc.)</span>
+│
+├── <span class="dir">utils/</span>
+│   ├── <span class="file">generate_dataset.py</span>             <span class="note">stage 1 — build HF DatasetDict from wav.scp + text</span>
+│   ├── <span class="file">create_from_pretrained.py</span>       <span class="note">stage 2 — assemble pretrained AED</span>
+│   ├── <span class="file">vectorized_dataset_utils.py</span>     <span class="note">preprocess_and_filter: audio → features, text → labels</span>
+│   ├── <span class="file">instruction_template_utils.py</span>   <span class="note">prompt + response template construction</span>
+│   ├── <span class="file">resample_dataset_utils.py</span>       <span class="note">audio resampling</span>
+│   ├── <span class="file">processor_utils.py</span>              <span class="note">save_and_create_processor (combined feat+tok)</span>
+│   ├── <span class="file">checkpoint_checking_utils.py</span>    <span class="note">resume_or_raise — detect last checkpoint</span>
+│   ├── <span class="file">freeze_utils.py</span>                 <span class="note">freeze_model — set requires_grad=False everywhere</span>
+│   ├── <span class="file">unfreeze_utils.py</span>               <span class="note">unfreeze_selected_params — partial unfreeze rules</span>
+│   ├── <span class="file">param_utils.py</span>                  <span class="note">trainable-param accounting</span>
+│   ├── <span class="file">merge_adapter.py</span>                <span class="note">merge LoRA adapters back into base weights</span>
+│   ├── <span class="file">metric_utils.py</span>                 <span class="note">compute_metrics for predict_with_generate eval</span>
+│   ├── <span class="file">compute-wer.py</span>                  <span class="note">WER computation script</span>
+│   ├── <span class="file">generation_utils.py</span>             <span class="note">GenerationMixin_Instruct.generate (vendored from HF + prompt injection)</span>
+│   └── <span class="file">generation_ctc_utils.py</span>         <span class="note">GenerationMixin_CTC.generate_ctc — CTC argmax decoding</span>
+│
+├── <span class="dir">slurm/</span>                              <span class="note">SLURM submit scripts per LLaMA size</span>
+│   ├── <span class="file">template.slurm</span>
+│   ├── <span class="file">sot_submit_{1b,3b,8b}.sh</span>           <span class="note">SOT-only training</span>
+│   ├── <span class="file">ctc_submit_{1b,3b,8b}.sh</span>           <span class="note">CTC-only training</span>
+│   ├── <span class="file">crossatt_submit_{1b,3b,8b}.sh</span>      <span class="note">cross-attention experiments</span>
+│   ├── <span class="file">cross_gate_submit_{1b,3b,8b}.sh</span>    <span class="note">cross-attention + LoRA gate</span>
+│   ├── <span class="file">submit{,_3b,_8b}.sh</span>                <span class="note">generic submitters</span>
+│   ├── <span class="file">run_debug.sh</span>                       <span class="note">local single-GPU debug runner</span>
+│   ├── <span class="file">run_decoding.sh</span>                    <span class="note">local decoding runner</span>
+│   └── <span class="file">sot_submit_inference.sh</span>
+│
+├── <span class="dir">datasets/</span>     <span class="note">(generated by stage 1)</span>
+├── <span class="dir">dump/</span>         <span class="note">(generated by stage 2)</span>
+├── <span class="file">requirements.txt</span>
+└── <span class="file">README.md</span>
+    </div>
+
+    <!-- =========================================================== -->
+    <h2 id="flags">9. Key CLI flags</h2>
+    <p>Both <code>run.sh</code> and the SLURM submit scripts use <code>key=value</code> style; the Python entry
+      points use HF <code>HfArgumentParser</code> with the same names prefixed by <code>--</code>.</p>
+
+    <h3>Mode &amp; architecture</h3>
+    <table>
+      <tr><th>Flag</th><th>Type</th><th>Effect</th></tr>
+      <tr><td><code>train_mode</code></td><td>attention / ctc / hybrid</td><td>Selects which loss is active.</td></tr>
+      <tr><td><code>encoder</code></td><td>str</td><td>e.g. <code>wavlm</code>.</td></tr>
+      <tr><td><code>decoder</code></td><td>str</td><td>HF LLaMA repo / local path.</td></tr>
+      <tr><td><code>instruct</code></td><td>bool</td><td>Use Llama-Instruct + chat-style prompt template with <code>&lt;bos_prompt&gt;…&lt;eos_response&gt;</code> wrapping.</td></tr>
+      <tr><td><code>talker_ctc</code></td><td>bool</td><td>Enable separator + per-talker CTC heads.</td></tr>
+      <tr><td><code>talker_numbers</code></td><td>int</td><td>Number of speakers (2 or 3).</td></tr>
+      <tr><td><code>separator_hidden</code></td><td>int</td><td>LSTM hidden size in the separator.</td></tr>
+      <tr><td><code>ctc_bridge</code> / <code>ctc_bridge_type</code></td><td>bool / str</td><td>Bridge CTC prefix into the decoder input. Types: <code>raw</code>, <code>ctcprompt</code>.</td></tr>
+    </table>
+
+    <h3>Freezing</h3>
+    <table>
+      <tr><th>Flag</th><th>Effect</th></tr>
+      <tr><td><code>freeze_encoder</code></td><td>If true, encoder is frozen by default. Combine with partial flags to selectively unfreeze.</td></tr>
+      <tr><td><code>freeze_decoder</code></td><td>Same for decoder.</td></tr>
+      <tr><td><code>freeze_feature_encoder</code></td><td>Freeze WavLM's front-end conv feature extractor (defaults true). Runs early so <code>partial_encoder_unfreeze</code> can override.</td></tr>
+      <tr><td><code>partial_encoder_unfreeze</code></td><td>Comma-list of name substrings; matching encoder params re-enable grad.</td></tr>
+      <tr><td><code>partial_decoder_unfreeze</code></td><td>Same for decoder.</td></tr>
+      <tr><td><code>partial_others_unfreeze</code></td><td>Same for non-encoder/decoder params (e.g. <code>enc_to_dec_proj</code>).</td></tr>
+      <tr><td><code>adapter_only_decoder</code></td><td>Inject LoRA into decoder self-attn. If true, post-train will merge adapters back into the base weights.</td></tr>
+    </table>
+
+    <h3>LoRA (two independent groups)</h3>
+    <table>
+      <tr><th>Flag</th><th>Default</th><th>Where it applies</th></tr>
+      <tr><td><code>selfattn_lora_r</code></td><td>16</td><td>PEFT LoRA rank on decoder <code>k/q/v/o_proj</code>.</td></tr>
+      <tr><td><code>selfattn_lora_alpha</code></td><td>32</td><td>PEFT LoRA alpha (scale = α/r).</td></tr>
+      <tr><td><code>selfattn_lora_dropout</code></td><td>0.1</td><td>PEFT LoRA dropout.</td></tr>
+      <tr><td><code>r_max</code></td><td>16</td><td>Adaptive-rank LoRA in cross-attention adapter (only used when <code>decoder_cross_attention_type=adapgatetiny</code>).</td></tr>
+      <tr><td><code>lora_alpha</code></td><td>16</td><td>Cross-attention LoRA alpha.</td></tr>
+    </table>
+
+    <h3>Cross-attention adapters</h3>
+    <table>
+      <tr><th>Flag</th><th>Type</th><th>Effect</th></tr>
+      <tr><td><code>decoder_cross_attention</code></td><td>bool</td><td>Insert per-layer cross-attn adapters into decoder.</td></tr>
+      <tr><td><code>decoder_cross_attention_type</code></td><td>str</td><td>tiny / gatetiny / adapgatetiny / ctcaware.</td></tr>
+      <tr><td><code>decoder_cross_attention_feature</code></td><td>str</td><td>raw (WavLM features) or sep (separator output).</td></tr>
+    </table>
+
+    <h3>Training hyperparameters</h3>
+    <table>
+      <tr><th>Flag</th><th>Default</th><th>Notes</th></tr>
+      <tr><td><code>epoch</code></td><td>—</td><td>Number of training epochs.</td></tr>
+      <tr><td><code>per_device_train_batch_size</code></td><td>—</td><td>Per-GPU batch size during training.</td></tr>
+      <tr><td><code>per_device_eval_batch_size</code></td><td>—</td><td>Per-GPU batch size during eval.</td></tr>
+      <tr><td><code>learning_rate</code></td><td>3e-5</td><td>Hardcoded in <code>run.sh</code>; edit there to change.</td></tr>
+      <tr><td><code>warmup_steps</code></td><td>400</td><td>LR warmup.</td></tr>
+      <tr><td><code>eval_steps</code></td><td>—</td><td>Evaluate every N steps.</td></tr>
+      <tr><td><code>save_steps</code></td><td>1600</td><td>Checkpoint frequency.</td></tr>
+      <tr><td><code>precision</code></td><td>fp32 / fp16 / bf16</td><td>Mixed-precision mode for training.</td></tr>
+      <tr><td><code>seed</code></td><td>42</td><td>Random seed.</td></tr>
+    </table>
+
+    <!-- =========================================================== -->
+    <h2 id="run-recipes">10. Run recipes</h2>
+
+    <h3>End-to-end on LibriMix-2mix-clean, 1B LLaMA, hybrid SOT+CTC</h3>
+    <pre><code>bash run.sh \
+  stage=1 stop_stage=4 \
+  corpus=libri2mix_clean \
+  talker_numbers=2 \
+  encoder=wavlm decoder=Llama-3.2-1B \
+  instruct=false \
+  talker_ctc=true talker_ctc_refine=false \
+  train_mode=hybrid \
+  adapter_only_decoder=true \
+  encoder_freeze=true decoder_freeze=true \
+  partial_encoder_unfreeze="adapter" partial_decoder_unfreeze="" partial_others_unfreeze="enc_to_dec_proj" \
+  separator_hidden=896 \
+  per_device_train_batch_size=8 per_device_eval_batch_size=8 \
+  epoch=30 eval_steps=1600 \
+  precision=bf16 \
+  ctc_bridge=false ctc_bridge_type=raw \
+  decoder_cross_attention=false decoder_cross_attention_type=tiny decoder_cross_attention_feature=raw \
+  selfattn_lora_r=16 selfattn_lora_alpha=32 \
+  r_max=8 lora_alpha=16 \
+  virtual_env=$HOME/venv \
+  cache_dir=$HOME/.hf_cache \
+  output_dir=exp/libri2mix
+</code></pre>
+
+    <h3>Just stage 3 (fine-tune) from an existing dump</h3>
+    <pre><code>bash run.sh stage=3 stop_stage=3 \
+  pretrain_model_path=dump/wavlm-Llama-3.2-1B \
+  &lt;all the other flags identical to above&gt;
+</code></pre>
+
+    <h3>Inference + WER only</h3>
+    <pre><code>bash run.sh stage=4 stop_stage=4 \
+  &lt;use the same flags that produced output_dir&gt;
+</code></pre>
+
+    <h3>CTC-only decoding (uses the per-talker CTC heads)</h3>
+    <pre><code>bash run.sh stage=5 stop_stage=5 \
+  &lt;same flags; output_dir must contain a trained model&gt;
+</code></pre>
+
+    <h3>SLURM submission (LLaMA-3B on cluster)</h3>
+    <pre><code>cd slurm
+bash submit_3b.sh
+# or for a specific recipe variant:
+bash sot_submit_3b.sh
+bash crossatt_submit_3b.sh
+bash cross_gate_submit_3b.sh</code></pre>
+
+    <div class="callout muted">
+      Tip: SLURM scripts pre-define <code>encoder</code> / <code>decoder</code> / <code>corpus</code> /
+      <code>talker_numbers</code> at the top of each file. Edit those, then call the script — it forwards
+      everything down to <code>run.sh</code> via <code>template.slurm</code>.
+    </div>
+
+    <h3>Where outputs land</h3>
+    <table>
+      <tr><th>Path</th><th>Contents</th></tr>
+      <tr><td><code>datasets/libri{N}mix_*/</code></td><td>HF DatasetDict (stage 1).</td></tr>
+      <tr><td><code>dump/{encoder}-{decoder}/</code></td><td>Pretrained AED checkpoint (stage 2).</td></tr>
+      <tr><td><code>exp/.../mode_{train_mode}-{enc}-{dec}-..._{corpus}/</code></td><td>Trained model + tokenizer + processor + checkpoints (stage 3).</td></tr>
+      <tr><td><code>exp/.../{validation,test}_label.text</code></td><td>Reference transcripts (stage 4/5/6).</td></tr>
+      <tr><td><code>exp/.../{validation,test}_decod.text</code></td><td>Decoded transcripts.</td></tr>
+      <tr><td><code>exp/.../{validation,test}_decod.wer</code></td><td>Per-utterance + corpus WER.</td></tr>
+    </table>
+
+    <p style="margin-top:48px; color: var(--muted); font-size:13px;">
+      Generated workflow document for <code>Multi-talker-ASR-with-LLMs</code> · branch <code>v1.0</code>.
+    </p>
+  </main>
+</div>
+</body>
+</html>

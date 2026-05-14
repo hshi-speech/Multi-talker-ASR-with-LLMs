@@ -22,11 +22,6 @@ talker_numbers=2
 decoder_cross_attention=false
 decoder_cross_attention_type=adapgatetiny
 decoder_cross_attention_feature=sep
-decoder_cross_attention_dynamic=false
-decoder_cross_attention_dynamic_threshold=0.01
-decoder_cross_attention_dynamic_ratio=0.6
-decoder_cross_attention_dynamic_loss=false
-
 encoder=wavlm
 decoder=Llama-3.2-1B
 # decoder=Llama-3.2-1B-Instruct
@@ -109,10 +104,6 @@ bash ../run_librispeechmix.sh \
 	decoder_cross_attention=$decoder_cross_attention \
 	decoder_cross_attention_type=$decoder_cross_attention_type \
 	decoder_cross_attention_feature=$decoder_cross_attention_feature \
-	decoder_cross_attention_dynamic=$decoder_cross_attention_dynamic \
-	decoder_cross_attention_dynamic_threshold=$decoder_cross_attention_dynamic_threshold \
-	decoder_cross_attention_dynamic_ratio=$decoder_cross_attention_dynamic_ratio \
-	decoder_cross_attention_dynamic_loss=$decoder_cross_attention_dynamic_loss \
 	r_max=${r_max} \
 	lora_alpha=${lora_alpha} \
 	output_dir=${output_dir} \

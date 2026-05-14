@@ -53,40 +53,46 @@ def unfreeze_selected_params(model, train_mode, model_args) -> None:
             param.requires_grad = True
         logger.info("Encoder fully unfrozen (freeze_encoder=False).")
 
-    # 2) Except training only with CTC loss 
+    # 2) Freeze the WavLM feature CNN (raw-audio conv stack at the front of the encoder).
+    #    Moved earlier so that the later `partial_encoder_unfreeze` step can re-enable specific
+    #    feature-extractor params if the user wants. Previously this ran at the END and silently
+    #    overrode any partial unfreeze of feature_extractor; the log message was also reversed
+    #    ("un-freezed" while actually freezing).
+    if model_args.freeze_feature_encoder:
+        model.freeze_feature_encoder()
+        logger.info("Feature extractor (front-end CNN) frozen (freeze_feature_encoder=True).")
+
+    # 3) Except training only with CTC loss
     #    Always keep specific encoder parts trainable
-    #    The adapter in encoder is the 3-CNN layers downsampling-projector layer
+    #    The adapter in encoder is the 3-CNN layers downsampling-projector layer (back-end)
     if(train_mode != 'ctc'):
         for name, param in model.encoder.named_parameters():
             if "adapter" in name or "masked_spec_embed" in name:
                 param.requires_grad = True
 
+    # 4) Partial encoder unfreezes — runs last so it can override steps (2) and (3).
     for name, param in model.encoder.named_parameters():
         for _partial in model_args.partial_encoder_unfreeze:
             if(_partial in name):
                 param.requires_grad = True
 
-    # 3) Keep encoder-decoder projection layers trainable
+    # 5) Keep encoder-decoder projection layers trainable
     if(train_mode != 'ctc') and (not model_args.ctc_bridge):
         for name, param in model.named_parameters():
             if "enc_to_dec_proj" in name:
                 param.requires_grad = True
 
-    # 4) Unfreeze other parameters
+    # 6) Unfreeze other parameters
     for name, param in model.named_parameters():
         for _partial in model_args.partial_others_unfreeze:
             if(_partial in name):
                 param.requires_grad = True
 
-    # 5) Unfreeze select decoder components
+    # 7) Unfreeze select decoder components
     for name, param in model.decoder.named_parameters():
         for _partial in model_args.partial_decoder_unfreeze:
             if(_partial in name):
                 param.requires_grad = True
-
-    if model_args.freeze_feature_encoder:
-        model.freeze_feature_encoder()
-        logger.info("Feature extractor in Encoder is un-freezed.")
 
     logger.info("unfreeze_selected_params finished.")
     logger.info("=" * 48)

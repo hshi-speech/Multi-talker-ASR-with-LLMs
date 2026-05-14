@@ -2059,7 +2059,7 @@ class GenerationMixin_Instruct:
             if model_input_name == "input_ids" and len(model_kwargs["attention_mask"].shape) > 2:
                 raise ValueError("`attention_mask` passed to `generate` must be 2D.")
 
-        if self.config.instruct and prompt_ids is not None:
+        if getattr(self.config, "instruct", False) and prompt_ids is not None:
             model_kwargs["prompt_ids"] = prompt_ids
 
         if self.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
@@ -2080,8 +2080,12 @@ class GenerationMixin_Instruct:
         else:
             input_ids = inputs_tensor if model_input_name == "input_ids" else model_kwargs.pop("input_ids")
 
-        # 5.5 Insert the 'prompt_ids' into model if the model is instruct
-        if self.config.instruct:
+        # 5.5 Insert the 'prompt_ids' into model if the model is instruct.
+        # Permissive: if prompt_ids weren't passed to .generate() (so model_kwargs has no
+        # 'prompt_ids' key), skip the concat instead of crashing with KeyError. The companion
+        # site at ~line 2062 only writes the kwarg when `prompt_ids is not None`, so this
+        # branch must mirror that condition.
+        if getattr(self.config, "instruct", False) and "prompt_ids" in model_kwargs:
             input_ids = torch.cat((input_ids, model_kwargs['prompt_ids']), dim=1)
 
         if generation_config.token_healing:

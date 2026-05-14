@@ -2059,7 +2059,7 @@ class GenerationMixin_CTC:
             if model_input_name == "input_ids" and len(model_kwargs["attention_mask"].shape) > 2:
                 raise ValueError("`attention_mask` passed to `generate` must be 2D.")
 
-        if self.config.instruct and prompt_ids is not None:
+        if getattr(self.config, "instruct", False) and prompt_ids is not None:
             model_kwargs["prompt_ids"] = prompt_ids
 
         if self.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:

@@ -34,10 +34,6 @@ for arg in "$@"; do
     decoder_cross_attention=*)        decoder_cross_attention="${arg#*=}" ;;
     decoder_cross_attention_type=*)   decoder_cross_attention_type="${arg#*=}" ;;
     decoder_cross_attention_feature=*) decoder_cross_attention_feature="${arg#*=}" ;;
-    decoder_cross_attention_dynamic=*) decoder_cross_attention_dynamic="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_threshold=*) decoder_cross_attention_dynamic_threshold="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_ratio=*) decoder_cross_attention_dynamic_ratio="${arg#*=}" ;;
-    decoder_cross_attention_dynamic_loss=*) decoder_cross_attention_dynamic_loss="${arg#*=}" ;;
     per_device_train_batch_size=*)   per_device_train_batch_size="${arg#*=}" ;;
     per_device_eval_batch_size=*)    per_device_eval_batch_size="${arg#*=}" ;;
     partial_encoder_unfreeze=*)      partial_encoder_unfreeze="${arg#*=}" ;;
@@ -49,6 +45,9 @@ for arg in "$@"; do
     precision=*)            precision="${arg#*=}" ;;
     r_max=*)                          r_max="${arg#*=}" ;;
     lora_alpha=*)                     lora_alpha="${arg#*=}" ;;
+    selfattn_lora_r=*)                selfattn_lora_r="${arg#*=}" ;;
+    selfattn_lora_alpha=*)            selfattn_lora_alpha="${arg#*=}" ;;
+    selfattn_lora_dropout=*)          selfattn_lora_dropout="${arg#*=}" ;;
     eval_steps=*)           eval_steps="${arg#*=}" ;;
     virtual_env=*)          virtual_env="${arg#*=}" ;;
     cache_dir=*)            cache_dir="${arg#*=}" ;;
@@ -83,16 +82,19 @@ echo "[run] virtual_env=$virtual_env"
 echo "[run] cache_dir=$cache_dir"
 seed="${seed-42}"
 echo "[run] seed=$seed"
+# Self-attn LoRA defaults (preserve previous hardcoded behaviour if not passed)
+selfattn_lora_r="${selfattn_lora_r-16}"
+selfattn_lora_alpha="${selfattn_lora_alpha-32}"
+selfattn_lora_dropout="${selfattn_lora_dropout-0.1}"
+echo "[run] selfattn_lora_r=$selfattn_lora_r"
+echo "[run] selfattn_lora_alpha=$selfattn_lora_alpha"
+echo "[run] selfattn_lora_dropout=$selfattn_lora_dropout"
 echo "[run] pretrain_separator_path=$pretrain_separator_path"
 echo "[run] ctc_bridge=$ctc_bridge"
 echo "[run] ctc_bridge_type=$ctc_bridge_type"
 echo "[run] decoder_cross_attention=$decoder_cross_attention"
 echo "[run] decoder_cross_attention_type=$decoder_cross_attention_type"
 echo "[run] decoder_cross_attention_feature=$decoder_cross_attention_feature"
-echo "[run] decoder_cross_attention_dynamic=$decoder_cross_attention_dynamic"
-echo "[run] decoder_cross_attention_dynamic_threshold=$decoder_cross_attention_dynamic_threshold"
-echo "[run] decoder_cross_attention_dynamic_ratio=$decoder_cross_attention_dynamic_ratio"
-echo "[run] decoder_cross_attention_dynamic_loss=$decoder_cross_attention_dynamic_loss"
 echo "[run] r_max=$r_max"
 echo "[run] lora_alpha=$lora_alpha"
 
@@ -128,13 +130,6 @@ fi
 if [ "${decoder_cross_attention_type}" = "adapgatetiny" ]; then
    output_dir="${output_dir}-rmax_$r_max-lora_alpha_$lora_alpha"
 fi
-if [ "${decoder_cross_attention_dynamic}" = "true" ]; then
-   output_dir="${output_dir}-dynamic"
-fi
-if [ "${decoder_cross_attention_dynamic_loss}" = "true" ]; then
-   output_dir="${output_dir}-dy_loss-${decoder_cross_attention_dynamic_ratio}"
-fi
-
 if [ "${ctc_bridge}" = "true" ]; then
     output_dir="${output_dir}-${ctc_bridge_type}"
 fi
@@ -224,15 +219,14 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
 	--decoder_cross_attention="${decoder_cross_attention}" \
 	--decoder_cross_attention_type="${decoder_cross_attention_type}" \
 	--decoder_cross_attention_feature="${decoder_cross_attention_feature}" \
-	--decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" \
-	--decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" \
-	--decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" \
-	--decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" \
 	--freeze_feature_encoder true \
 	--freeze_encoder ${encoder_freeze} \
 	--freeze_decoder ${decoder_freeze} \
 	--r_max="${r_max}" \
 	--lora_alpha="${lora_alpha}" \
+	--selfattn_lora_r="${selfattn_lora_r}" \
+	--selfattn_lora_alpha="${selfattn_lora_alpha}" \
+	--selfattn_lora_dropout="${selfattn_lora_dropout}" \
         --partial_encoder_unfreeze="${partial_encoder_unfreeze}" \
         --partial_decoder_unfreeze="${partial_decoder_unfreeze}" \
         --partial_others_unfreeze="${partial_others_unfreeze}" \
@@ -293,10 +287,6 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             --decoder_cross_attention="${decoder_cross_attention}" \
             --decoder_cross_attention_type="${decoder_cross_attention_type}" \
 	    --decoder_cross_attention_feature="${decoder_cross_attention_feature}" \
-	    --decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" \
-            --decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" \
-            --decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" \
-            --decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" \
             --freeze_encoder ${encoder_freeze} \
             --freeze_decoder ${decoder_freeze} \
             --partial_encoder_unfreeze="${partial_encoder_unfreeze}" \
@@ -428,10 +418,6 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
             --decoder_cross_attention="${decoder_cross_attention}" \
             --decoder_cross_attention_type="${decoder_cross_attention_type}" \
             --decoder_cross_attention_feature="${decoder_cross_attention_feature}" \
-            --decoder_cross_attention_dynamic="${decoder_cross_attention_dynamic}" \
-            --decoder_cross_attention_dynamic_threshold="${decoder_cross_attention_dynamic_threshold}" \
-            --decoder_cross_attention_dynamic_ratio="${decoder_cross_attention_dynamic_ratio}" \
-            --decoder_cross_attention_dynamic_loss="${decoder_cross_attention_dynamic_loss}" \
             --freeze_encoder ${encoder_freeze} \
             --freeze_decoder ${decoder_freeze} \
             --partial_encoder_unfreeze="${partial_encoder_unfreeze}" \

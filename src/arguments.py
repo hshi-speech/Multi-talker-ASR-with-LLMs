@@ -70,6 +70,18 @@ class ModelArguments:
         default=16,
         metadata={"help": "The alpha of lora for cross attention adaptation."},
     )
+    selfattn_lora_r: int = field(
+        default=16,
+        metadata={"help": "LoRA rank for self-attention adaptation (PEFT-injected into k/q/v/o_proj)."},
+    )
+    selfattn_lora_alpha: int = field(
+        default=32,
+        metadata={"help": "LoRA alpha for self-attention adaptation."},
+    )
+    selfattn_lora_dropout: float = field(
+        default=0.1,
+        metadata={"help": "LoRA dropout for self-attention adaptation."},
+    )
     separator_hidden: int = field(
         default=896,
         metadata={"help": "The number of hidden nodes of separator."},
@@ -93,22 +105,6 @@ class ModelArguments:
     decoder_cross_attention_feature: str = field(
         default="raw",
         metadata={"help": "Feature of cross attention module."}
-    )
-    decoder_cross_attention_dynamic: str = field(
-        default="false",
-        metadata={"help": "Layer gates for cross attention"}
-    )
-    decoder_cross_attention_dynamic_threshold: float = field(
-        default=0.0,
-        metadata={"help": "Threshold for layer gating."},
-    )
-    decoder_cross_attention_dynamic_loss : bool = field(
-        default=False,
-        metadata={"help": "Whether to use dynamic loss for training cross-attention gate."},
-    )
-    decoder_cross_attention_dynamic_ratio: float = field(
-        default=0.8,
-        metadata={"help": "Threshold for layer gating."},
     )
 
 
