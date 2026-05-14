@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-talker ASR with LLMs — Code Walkthrough &amp; Hyper-parameter Guide</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a22; --panel2:#1b2030;
+    --fg:#e6e6e6; --muted:#a9b1c0; --accent:#7cc4ff; --accent2:#ffb86b;
+    --green:#7ee787; --red:#ff7b72; --yellow:#f0d770;
+    --border:#2a3142;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.55;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 28px 80px}
+  h1{font-size:28px;margin:0 0 6px;color:#fff}
+  h2{font-size:22px;margin:36px 0 12px;color:#fff;border-bottom:1px solid var(--border);padding-bottom:6px}
+  h3{font-size:17px;margin:24px 0 8px;color:var(--accent)}
+  h4{font-size:15px;margin:18px 0 6px;color:var(--accent2)}
+  p,li{color:var(--fg)}
+  code,pre{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+  code{background:#21263400;color:#ffd479;padding:0 4px;border-radius:4px}
+  pre{background:var(--panel);border:1px solid var(--border);padding:14px 16px;border-radius:8px;overflow:auto;color:#dbe5f1}
+  pre code{background:transparent;color:inherit;padding:0}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);background:var(--panel2);color:var(--accent);margin-right:6px}
+  .pill.warn{color:var(--yellow);border-color:#52461c}
+  .pill.bad{color:var(--red);border-color:#5a2025}
+  .pill.ok{color:var(--green);border-color:#1f5a2a}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+  .card h3{margin-top:0}
+  table{border-collapse:collapse;width:100%;margin:10px 0 22px;background:var(--panel);border-radius:8px;overflow:hidden}
+  th,td{padding:9px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}
+  th{background:#202635;color:#dfe7ff;font-weight:600;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  td code{color:#ffd479}
+  .arrow{color:var(--muted);margin:0 6px}
+  .step{display:flex;gap:12px;align-items:flex-start;margin:10px 0}
+  .step .n{flex:0 0 28px;height:28px;border-radius:50%;background:var(--accent);color:#08111c;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .step .body{flex:1}
+  .note{background:#1a2233;border-left:3px solid var(--accent);padding:10px 14px;border-radius:6px;margin:10px 0;color:#cfd9ea}
+  .warn{background:#2b2316;border-left:3px solid var(--yellow);padding:10px 14px;border-radius:6px;margin:10px 0}
+  .small{font-size:12px;color:var(--muted)}
+  .kbd{background:#202635;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:monospace}
+  hr{border:none;border-top:1px solid var(--border);margin:30px 0}
+  ul.flow{list-style:none;padding-left:0}
+  ul.flow li{position:relative;padding-left:22px;margin:6px 0}
+  ul.flow li::before{content:"▸";color:var(--accent);position:absolute;left:6px;top:0}
+  .ascii{white-space:pre;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 16px;color:#dbe5f1;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Multi-talker ASR with LLMs</h1>
+<p class="muted">Code walkthrough &amp; hyper-parameter guide for the <code>v1.0</code> branch. Generated from the source on 2026-05-14.</p>
+
+<!-- ====================================================== -->
+<h2>1. High-level Picture</h2>
+
+<p>This repo fine-tunes a <strong>Speech-Encoder + LLM-Decoder</strong> model for multi-talker
+ASR. The wiring is roughly:</p>
+
+<div class="ascii">audio  ─►  Speech Encoder (WavLM/Whisper)  ─►  Separator  ─►  Serialized CTC heads (per talker)
+                                                  │
+                                                  └►  acoustic memory (mix / sep)
+                                                              │
+                                                              ▼
+                                      ┌───────────────────────────────────────┐
+                                      │   LLaMA Decoder (causal)              │
+                                      │                                       │
+                                      │   each layer:                         │
+                                      │     self-attn  ◄── PEFT LoRA          │  ① Self-attn adapter
+                                      │        │                              │
+                                      │        ▼                              │
+                                      │     adaptation_module(...)  ◄── Cross │  ② Cross-attn adapter
+                                      │        │           -attn over         │
+                                      │        ▼           acoustic memory    │
+                                      │     MLP                               │
+                                      └───────────────────────────────────────┘
+                                                              │
+                                                              ▼
+                                                   tokens (transcripts of all talkers)</div>
+
+<p>Two LoRA-style adapter groups are stacked inside each Llama decoder layer:</p>
+
+<ul class="flow">
+  <li><strong>Self-attention adapter</strong> — vanilla PEFT LoRA on the existing <code>q/k/v/o_proj</code>.</li>
+  <li><strong>Cross-attention adapter</strong> — a custom module added between self-attn and MLP that
+    cross-attends from decoder hidden states to acoustic memory; itself contains LoRA on its own
+    <code>q/k/v/out</code>. Several variants exist (<code>tiny</code>, <code>gatetiny</code>,
+    <code>ctcaware</code>, <code>adapgatetiny</code>).</li>
+</ul>
+
+<!-- ====================================================== -->
+<h2>2. End-to-end Execution Flow</h2>
+
+<p>Launch path: <code>run.sh</code> / <code>run_librispeechmix.sh</code>
+<span class="arrow">→</span> <code>finetune_asr.py</code>
+<span class="arrow">→</span> HuggingFace <code>Seq2SeqTrainer</code>.</p>
+
+<div class="step"><div class="n">1</div><div class="body">
+  <strong>Parse arguments</strong> — <code>HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))</code>.
+  <span class="muted">finetune_asr.py:49-56</span>
+</div></div>
+
+<div class="step"><div class="n">2</div><div class="body">
+  <strong>Build config</strong> — <code>load_config(model_args)</code>, then the user-facing knobs
+  (<code>talker_ctc</code>, <code>train_mode</code>, <code>ctc_alpha</code>, <code>decoder_cross_attention*</code>,
+  <code>r_max</code>, <code>lora_alpha</code>, …) are copied onto the config object.
+  <span class="muted">finetune_asr.py:91-104</span>
+</div></div>
+
+<div class="step"><div class="n">3</div><div class="body">
+  <strong>Build model</strong> — <code>load_aed_model</code> instantiates
+  <code>SpeechEncoderDecoderModelLlama.from_pretrained(...)</code>. Inside <code>__init__</code> the
+  config is read and the optional sub-modules are conditionally constructed:
+  <ul class="flow">
+    <li><code>Separator</code> + <code>serialized_ctc[talker_numbers]</code> if <code>talker_ctc=True</code></li>
+    <li><code>CTCAwareFrameRefiner</code> if <code>talker_ctc_refine=True</code></li>
+    <li><code>cross_att_adap = ModuleList([...])</code> if <code>decoder_cross_attention=True</code>,
+      picking the class based on <code>decoder_cross_attention_type</code> (see §4)</li>
+  </ul>
+  <span class="muted">modeling_speech_encoder_decoder_llama.py:150-247</span>
+</div></div>
+
+<div class="step"><div class="n">4</div><div class="body">
+  <strong>Optionally load pretrained separator/CTC</strong> from <code>pretrain_separator_path</code>.
+  <span class="muted">finetune_asr.py:118-119</span>
+</div></div>
+
+<div class="step"><div class="n">5</div><div class="body">
+  <strong>Freeze everything, then unfreeze selectively.</strong>
+<pre><code>freeze_model(model)
+if adapter_only_decoder:
+    insert_adapters(model, model_args, config)   # PEFT LoRA → self-attn k/q/v/o_proj
+unfreeze_selected_params(model, train_mode, model_args)</code></pre>
+  In <em>ctc</em> train_mode no adapter is inserted; otherwise PEFT LoRA is added on the decoder
+  self-attention projections (or every layer if <code>adapter_only_decoder=False</code>).
+  <span class="muted">finetune_asr.py:121-130 · insert_adapter_decoder.py:43-87</span>
+</div></div>
+
+<div class="step"><div class="n">6</div><div class="body">
+  <strong>Data pipeline</strong>: <code>load_dataset_or_fail</code> → <code>maybe_resample_dataset</code>
+  → <code>preprocess_and_filter</code> → <code>DataCollatorSpeechSeq2SeqWithPadding</code> (collator
+  also prepends the speech prefix &amp; handles label masking).
+  <span class="muted">finetune_asr.py:142-163</span>
+</div></div>
+
+<div class="step"><div class="n">7</div><div class="body">
+  <strong>Train</strong> with <code>Seq2SeqTrainer.train(resume_from_checkpoint=…)</code>; on finish
+  the model is dumped as <code>model.safetensors</code> (CTC / non-adapter case) or
+  <code>model_unmerge.safetensors</code> (adapter case — LoRA branches not yet merged into base).
+  <span class="muted">finetune_asr.py:172-198</span>
+</div></div>
+
+<h3>Per-step forward pass (modeling_speech_encoder_decoder_llama.py)</h3>
+<ol>
+  <li>Encoder produces <code>mixed_encoding_feature</code>; separator splits into per-talker
+    hidden states <code>sep_hidden_states</code>.</li>
+  <li>(optional) <code>CTCAwareFrameRefiner</code> refines those hidden states using the CTC heads.</li>
+  <li>The cross-attn <em>memory</em> is selected by <code>decoder_cross_attention_feature</code>:
+    <ul>
+      <li><code>"mix"</code> → mixed encoder output</li>
+      <li><code>"sep"</code> → concatenated per-talker hidden states (mask repeated &amp; aligned)</li>
+    </ul>
+    <span class="muted">…llama.py:603-621</span>
+  </li>
+  <li>(optional) <strong>CTC bridge</strong>: when <code>ctc_bridge=True</code>, the encoder
+    hidden states fed to the decoder are <em>replaced</em> by either
+    raw separated features (<code>raw</code>) or CTC-prompt embeddings prepended (<code>ctcprompt</code>).
+    <span class="muted">…llama.py:624-661</span></li>
+  <li>Decoder is called with <code>acoustic_mem</code>, <code>acoustic_mask</code>, and the
+    <code>cross_att_adap</code> ModuleList passed via <code>adaptation_modules</code>.
+    Inside each <code>LlamaDecoderLayer.forward</code>, after self-attn the corresponding
+    adapter runs:
+<pre><code>refined = adaptation_module(hidden_states,
+                            acoustic_mem,
+                            acoustic_sep,
+                            mem_mask=acoustic_mask, …)
+hidden_states = refined   # no outer layer-gate</code></pre>
+    <span class="muted">llama_modules.py:383-396</span></li>
+  <li>Losses combine CE on labels + (optional) per-talker CTC losses, weighted by
+    <code>ctc_alpha</code>.</li>
+</ol>
+
+<!-- ====================================================== -->
+<h2>3. The Two Adapters Side-by-Side</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>① Self-attention adapter</h3>
+    <p class="small">file: <code>src/insert_adapter_decoder.py</code></p>
+    <ul class="flow">
+      <li>Standard <strong>PEFT <code>LoraConfig</code></strong>, attached via
+        <code>model.add_adapter(...) / enable_adapters()</code>.</li>
+      <li>Wraps existing decoder <code>self_attn.{k,q,v,o}_proj</code>.</li>
+      <li>Fixed rank <code>r</code>, scale <code>α / r</code>, dropout on the input side.</li>
+      <li>No LayerNorm, no gating — pure additive ΔW = B·A.</li>
+      <li>Only the LoRA A/B added by PEFT are trainable in the self-attn path.</li>
+    </ul>
+<pre><code>LoraConfig(
+  r=selfattn_lora_r,
+  lora_alpha=selfattn_lora_alpha,
+  lora_dropout=selfattn_lora_dropout,
+  target_modules=[decoder…self_attn.{k,q,v,o}_proj],
+)</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>② Cross-attention adapter</h3>
+    <p class="small">file: <code>models/adap_gate_tiny_crossatt_module.py</code> (and 3 simpler siblings)</p>
+    <ul class="flow">
+      <li>Custom <code>nn.Module</code> — adds an <em>entirely new</em> cross-attention block
+        (its own <code>q_proj / k_proj / v_proj / out_proj</code>) on top of the frozen base.</li>
+      <li>Q from decoder hidden state, K/V from acoustic memory (<code>mem_dim ≠ hidden_size</code>).</li>
+      <li>LoRA is applied to <em>those new projections</em>, with <strong>adaptive per-rank gates</strong>
+        (<code>sigmoid(rank_logits)</code>) — supports budget &amp; pruning
+        (<code>rank_usage()</code>, <code>prune_lora_ranks()</code>).</li>
+      <li>Has <code>ln_in</code> / <code>ln_out</code> and a scalar <strong>layer gate</strong>
+        <code>gate_logit</code> (init <code>sigmoid(-2)≈0.12</code>).</li>
+      <li>Inserted manually in <code>LlamaDecoderLayer.forward</code> — not via PEFT.</li>
+    </ul>
+<pre><code>out = hidden + sigmoid(gate_logit) *
+              ( LayerNorm(hidden + out_proj(attn(Q, K, V))) - hidden )</code></pre>
+  </div>
+</div>
+
+<h3>Variants of the cross-attention adapter (selected by <code>decoder_cross_attention_type</code>)</h3>
+<table>
+  <thead><tr><th>type</th><th>class</th><th>extras vs. <code>tiny</code></th></tr></thead>
+  <tbody>
+    <tr><td><code>tiny</code></td><td><code>TinyCrossAttnAdapter</code></td><td>baseline — full-rank q/k/v/out, no gate, no LoRA.</td></tr>
+    <tr><td><code>gatetiny</code></td><td><code>GatedTinyCrossAttnAdapter</code></td><td>+ scalar gate on residual.</td></tr>
+    <tr><td><code>ctcaware</code></td><td><code>CTCAwareTinyCrossAttnAdapter</code></td><td>can consume per-talker CTC confidence/masks.</td></tr>
+    <tr><td><code>adapgatetiny</code></td><td><code>AdapGatedTinyCrossAttnAdapter</code></td><td>gate <em>plus</em> adaptive-rank LoRA on q/k/v/out (uses <code>r_max</code>, <code>lora_alpha</code>).</td></tr>
+  </tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>4. Hyper-parameters and What They Do</h2>
+
+<p>Every flag below comes from <code>src/arguments.py</code> (CLI / JSON config). Below each
+table I describe what happens at the code level when you change it.</p>
+
+<h3>4.1 Architecture toggles</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>model_name_or_path</code></td><td>—</td>
+  <td>Path/identifier passed to <code>SpeechEncoderDecoderModelLlama.from_pretrained</code>. Determines encoder + decoder backbones.</td></tr>
+<tr><td><code>talker_ctc</code></td><td>False</td>
+  <td>If True → build <code>Separator</code> + a <code>serialized_ctc[talker_numbers]</code> ModuleList; per-talker CTC loss participates in training. If False, no separator is constructed and the CTC branch is empty.</td></tr>
+<tr><td><code>talker_ctc_refine</code></td><td>False</td>
+  <td>Adds a <code>CTCAwareFrameRefiner</code> that uses CTC heads to refine the per-talker hidden states before passing them downstream.</td></tr>
+<tr><td><code>talker_numbers</code></td><td>2</td>
+  <td>Number of speakers. Controls (i) separator output heads, (ii) length of <code>serialized_ctc</code>, (iii) repeat-factor of <code>encoder_attention_mask</code> when concatenating per-talker features, (iv) label split.</td></tr>
+<tr><td><code>separator_hidden</code></td><td>896</td>
+  <td>Hidden width of the <code>Separator</code>. Pure capacity knob — bigger = more separator params.</td></tr>
+<tr><td><code>ctc_bridge</code></td><td>False</td>
+  <td>If True the encoder→decoder feature is replaced with a CTC-derived bridge (see <code>ctc_bridge_type</code>).</td></tr>
+<tr><td><code>ctc_bridge_type</code></td><td><code>"raw"</code></td>
+  <td><code>raw</code>: concat per-talker hidden states and pass through encoder adapter + projection. <code>ctcprompt</code>: build prefix embeddings from CTC argmax transcripts and prepend them to the encoder hidden states.</td></tr>
+<tr><td><code>decoder_cross_attention</code></td><td>False</td>
+  <td>Master switch for the cross-attention adapter. If False, <code>cross_att_adap=None</code> and the decoder layer skips the <code>adaptation_module</code> block.</td></tr>
+<tr><td><code>decoder_cross_attention_type</code></td><td><code>"tiny"</code></td>
+  <td>Selects which of the four adapter classes to instantiate per decoder layer (see table in §3).</td></tr>
+<tr><td><code>decoder_cross_attention_feature</code></td><td><code>"raw"</code></td>
+  <td>Choose memory: <code>"mix"</code> → mixed encoder output; <code>"sep"</code> → concatenated per-talker hidden states.</td></tr>
+</tbody>
+</table>
+
+<h3>4.2 LoRA — self-attention path (PEFT)</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>adapter_only_decoder</code></td><td>True</td>
+  <td>True → PEFT <code>target_modules</code> lists only the decoder layers’ <code>self_attn.{k,q,v,o}_proj</code>. False → glob targets <code>"k_proj","q_proj","v_proj","o_proj"</code> — PEFT will inject LoRA into every module that matches those names (including the encoder if applicable).</td></tr>
+<tr><td><code>selfattn_lora_r</code></td><td>16</td>
+  <td>LoRA rank for self-attn. ΔW = B(d,r)·A(r,d). Larger r → more capacity &amp; params; trainable count scales linearly with r.</td></tr>
+<tr><td><code>selfattn_lora_alpha</code></td><td>32</td>
+  <td>Effective scale = <code>alpha / r</code>. Increasing α makes the adapter contribute more strongly to the output without changing parameter count.</td></tr>
+<tr><td><code>selfattn_lora_dropout</code></td><td>0.1</td>
+  <td>Dropout on the LoRA input before the down-projection A. Regularizes the adapter; 0 disables.</td></tr>
+</tbody>
+</table>
+
+<h3>4.3 LoRA — cross-attention path (custom adapter)</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>r_max</code></td><td>16</td>
+  <td>Maximum LoRA rank inside <strong>each</strong> q/k/v/out branch of the cross-attn adapter. Each rank carries an independent learnable gate <code>sigmoid(rank_logits)</code>; truly active rank is data-driven, capped at <code>r_max</code>.</td></tr>
+<tr><td><code>lora_alpha</code></td><td>16</td>
+  <td>Static scale: <code>lora_scale = lora_alpha / r_max</code>. Note: when pruning, <code>r_max</code> shrinks and <code>lora_scale</code> is recomputed.</td></tr>
+<tr><td>(hard-coded) <code>lora_dropout=0.05</code></td><td>—</td>
+  <td>Dropout on the LoRA input (set in <code>modeling_speech_encoder_decoder_llama.py:239</code>).</td></tr>
+<tr><td>(hard-coded) <code>init_rank_logit=2.0</code></td><td>—</td>
+  <td>Initial value of every rank logit. <code>sigmoid(2)≈0.88</code> — adapters start mostly "on" and are expected to be pruned by budget pressure during training.</td></tr>
+<tr><td>(hard-coded) <code>apply_lora_to="qkv_out"</code></td><td>—</td>
+  <td>Apply LoRA to Q, K, V, and Out (alternative: <code>"q_out"</code> applies only to Q and Out — K/V are then pure base projections).</td></tr>
+<tr><td>(hard-coded) <code>freeze_base=True</code></td><td>—</td>
+  <td>Freeze the base <code>q/k/v/out_proj</code> of the cross-attn adapter, so only the LoRA branches, LayerNorms, and the scalar gate are trainable.</td></tr>
+<tr><td>(learned) <code>gate_logit</code></td><td>init −2</td>
+  <td>Scalar that controls how much of the cross-attn delta is mixed into the residual (<code>sigmoid(−2)≈0.12</code>). Trained jointly.</td></tr>
+</tbody>
+</table>
+
+<div class="note">
+  <strong>Key contrast.</strong> <code>selfattn_lora_*</code> are PEFT-side knobs (vanilla LoRA, fixed
+  rank, simple α/r scale). <code>r_max</code> / <code>lora_alpha</code> live on the cross-attn
+  side, where the LoRA is custom and supports per-rank gating, soft rank usage, and physical
+  pruning via <code>prune_lora_ranks()</code>.
+</div>
+
+<h3>4.4 Training mode &amp; loss weighting</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>train_mode</code></td><td><code>"attention"</code></td>
+  <td>
+    <code>"ctc"</code> → no decoder adapter inserted; mostly the CTC heads + separator are trained.<br>
+    <code>"attention"</code> → only cross-entropy on decoder outputs (and adapters trainable).<br>
+    <code>"hybrid"</code> → attention + CTC weighted sum.<br>
+    Code path: <code>finetune_asr.py:123-130</code> &amp; <code>losses.py</code>.
+  </td></tr>
+<tr><td><code>ctc_alpha</code></td><td>0.7</td>
+  <td>Weight of the CTC loss term in <code>hybrid</code> mode (CE loss receives <code>1 − α</code>).</td></tr>
+<tr><td><code>ctc_decoding</code></td><td>False</td>
+  <td>Use CTC head for decoding during inference rather than the LLM head.</td></tr>
+<tr><td><code>apply_spec_augment</code></td><td>False</td>
+  <td>For Whisper-style encoders, enables SpecAugment via <code>config.update</code>.</td></tr>
+</tbody>
+</table>
+
+<h3>4.5 Freeze / unfreeze controls</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>freeze_feature_encoder</code></td><td>True</td>
+  <td>Freezes the raw feature-extractor inside the speech encoder.</td></tr>
+<tr><td><code>freeze_encoder</code></td><td>False</td>
+  <td>Freeze the whole encoder. Combined with <code>partial_encoder_unfreeze</code> you get fine-grained selective training.</td></tr>
+<tr><td><code>freeze_decoder</code></td><td>False</td>
+  <td>Freeze the whole LLM decoder. PEFT LoRA branches and any inserted modules remain trainable independently.</td></tr>
+<tr><td><code>partial_encoder_unfreeze</code></td><td><code>["masked_spec_embed"]</code></td>
+  <td>Substrings of parameter names that <em>must</em> remain trainable inside the encoder, regardless of the freeze above. Runs last in <code>unfreeze_selected_params</code> so it overrides earlier freeze steps.</td></tr>
+<tr><td><code>partial_decoder_unfreeze</code></td><td><code>["lm_head","embed_tokens","embed_positions","layernorm_embedding"]</code></td>
+  <td>Same idea but for the decoder side.</td></tr>
+<tr><td><code>partial_others_unfreeze</code></td><td><code>["enc_to_dec_proj","ctc"]</code></td>
+  <td>Same idea but for "glue" modules outside encoder/decoder (projection, CTC heads, …).</td></tr>
+</tbody>
+</table>
+
+<h3>4.6 Data &amp; runtime</h3>
+<table>
+<thead><tr><th>flag</th><th>default</th><th>effect</th></tr></thead>
+<tbody>
+<tr><td><code>dataset_name</code> / <code>dataset_config_name</code></td><td>—</td>
+  <td>HF datasets identifier &amp; subset.</td></tr>
+<tr><td><code>audio_column_name</code> / <code>text_column_name</code></td><td><code>"audio"</code> / <code>"text"</code></td>
+  <td>Column names used by <code>preprocess_and_filter</code>.</td></tr>
+<tr><td><code>min_duration_in_seconds</code> / <code>max_duration_in_seconds</code></td><td>0.0 / 20.0</td>
+  <td>Hard length filter before training.</td></tr>
+<tr><td><code>max_train_samples</code> / <code>max_eval_samples</code></td><td>None</td>
+  <td>Truncate splits — handy for debug.</td></tr>
+<tr><td><code>preprocessing_only</code></td><td>False</td>
+  <td>Stop after caching the preprocessed dataset (lets you run distributed training without re-doing prep).</td></tr>
+<tr><td><code>do_lower_case</code></td><td>True</td>
+  <td>Lower-case targets in preprocessing.</td></tr>
+<tr><td><code>language</code> / <code>task</code></td><td>None / "transcribe"</td>
+  <td>Used for multilingual / translation modes (mostly Whisper).</td></tr>
+</tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>5. How a Few Knobs Interact</h2>
+
+<div class="card">
+  <h3>Turning on the cross-attn adapter end-to-end</h3>
+<pre><code>decoder_cross_attention=true
+decoder_cross_attention_type=adapgatetiny    # picks AdapGatedTinyCrossAttnAdapter
+decoder_cross_attention_feature=sep          # use concatenated per-talker features as memory
+r_max=32
+lora_alpha=16</code></pre>
+  <p class="small">Effect: one <code>AdapGatedTinyCrossAttnAdapter</code> is built per decoder layer
+    with per-branch LoRA up to rank 32 and scale 16/32; the memory it cross-attends to is the
+    concatenation of separated talker features. The scalar gate starts low so the adapter does
+    almost nothing at step 0 and ramps up.</p>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <h3>Self-attn LoRA only, no cross-attn</h3>
+<pre><code>decoder_cross_attention=false
+adapter_only_decoder=true
+selfattn_lora_r=16
+selfattn_lora_alpha=32
+selfattn_lora_dropout=0.1</code></pre>
+  <p class="small">Effect: <code>insert_adapters</code> builds a <code>LoraConfig</code> whose
+    <code>target_modules</code> lists every <code>decoder.model.layers.N.self_attn.{k,q,v,o}_proj</code>;
+    PEFT adds the A/B matrices. The cross-attn block in the decoder layer is a no-op.</p>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <h3>CTC-only pre-training</h3>
+<pre><code>train_mode=ctc
+talker_ctc=true
+talker_numbers=2
+adapter_only_decoder=false   # no PEFT adapter inserted in this branch anyway</code></pre>
+  <p class="small">Effect: everything freezes, then <code>unfreeze_selected_params</code> reopens the
+    CTC heads and separator (<code>partial_others_unfreeze</code> includes
+    <code>"ctc"</code>). No LoRA, no cross-attn — useful to warm up the separator + CTC heads
+    before plugging the LLM decoder back in.</p>
+</div>
+
+<!-- ====================================================== -->
+<h2>6. Quick-reference: trainable surface by mode</h2>
+
+<table>
+<thead><tr><th>mode</th><th>self-attn LoRA</th><th>cross-attn adapter</th><th>encoder</th><th>CTC heads + separator</th><th>embeddings / lm_head</th></tr></thead>
+<tbody>
+<tr><td><code>train_mode=ctc</code></td>
+  <td>—</td><td>—</td>
+  <td>via <code>partial_encoder_unfreeze</code></td>
+  <td><span class="pill ok">yes</span></td>
+  <td>—</td></tr>
+<tr><td><code>train_mode=attention</code>, no cross-attn</td>
+  <td><span class="pill ok">yes (PEFT)</span></td><td>—</td>
+  <td>partial</td><td>partial</td>
+  <td>via <code>partial_decoder_unfreeze</code></td></tr>
+<tr><td><code>train_mode=attention</code> + cross-attn (<code>adapgatetiny</code>)</td>
+  <td><span class="pill ok">yes</span></td>
+  <td><span class="pill ok">LoRA branches + LN + gate</span> (base frozen)</td>
+  <td>partial</td><td>partial</td>
+  <td>partial</td></tr>
+<tr><td><code>train_mode=hybrid</code></td>
+  <td><span class="pill ok">yes</span></td>
+  <td><span class="pill ok">yes</span></td>
+  <td>partial</td>
+  <td><span class="pill ok">yes</span> (via CTC loss)</td>
+  <td>partial</td></tr>
+</tbody>
+</table>
+
+<hr>
+<p class="small">Source files referenced: <code>finetune_asr.py</code>,
+<code>src/arguments.py</code>, <code>src/insert_adapter_decoder.py</code>,
+<code>src/model_loader.py</code>, <code>models/modeling_speech_encoder_decoder_llama.py</code>,
+<code>models/llama_modules.py</code>,
+<code>models/adap_gate_tiny_crossatt_module.py</code>,
+<code>models/tiny_crossatt_module.py</code>,
+<code>models/gate_tiny_crossatt_module.py</code>,
+<code>models/ctcaware_crossatt_module.py</code>,
+<code>utils/unfreeze_utils.py</code>.</p>
+
+</div>
+</body>
+</html>
