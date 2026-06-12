@@ -93,7 +93,10 @@ class HybridLoss(nn.Module):
             # Fixed-order CTC supervision: head i ↔ speaker i in the dataset's split order.
             # (PIT and the static perm modes were removed — see top-of-file note.)
             ctc_per_head = []
-            with torch.cuda.amp.autocast(enabled=False):
+            device_type = "cuda" if label_spks[0].is_cuda or (
+                sep_hidden_states is not None and sep_hidden_states[0].is_cuda
+            ) else "cpu"
+            with torch.amp.autocast(device_type, enabled=False):
                 for i, ctc_head in enumerate(talker_ctc):
                     li = ctc_head(
                         sep_hidden_states[i].float(),

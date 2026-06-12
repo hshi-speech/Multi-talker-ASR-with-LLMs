@@ -40,6 +40,8 @@ class CTC(torch.nn.Module):
         self.ctc_type = ctc_type
         if ignore_nan_grad is not None:
             zero_infinity = ignore_nan_grad
+        # used by the "builtin2" loss path; was referenced but never assigned
+        self.ignore_nan_grad = zero_infinity
 
         self.ctc_loss = torch.nn.CTCLoss(
             reduction="none", zero_infinity=zero_infinity, blank=odim-1

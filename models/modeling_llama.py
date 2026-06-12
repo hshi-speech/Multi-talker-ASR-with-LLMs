@@ -296,10 +296,12 @@ class LlamaModel(LlamaPreTrainedModel):
                 return attention_mask
             return None
         if self.config._attn_implementation == "flex_attention":
-            if isinstance(attention_mask, torch.Tensor):
-                attention_mask = make_flex_block_causal_mask(attention_mask)
-            if isinstance(attention_mask, BlockMask):
-                return attention_mask
+            # The flex-attention helpers (make_flex_block_causal_mask / BlockMask) were
+            # never imported into this fork; fail clearly instead of NameError.
+            raise NotImplementedError(
+                "attn_implementation='flex_attention' is not supported by this fork; "
+                "use 'sdpa', 'eager', or 'flash_attention_2'."
+            )
 
         # For SDPA, when possible, we will rely on its `is_causal` argument instead of its `attn_mask` argument, in
         # order to dispatch on Flash Attention 2. This feature is not compatible with static cache, as SDPA will fail

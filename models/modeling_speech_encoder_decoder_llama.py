@@ -852,6 +852,11 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
         wavlm_hidden_stages   = encoder_outputs[1]
 
         # Here we add serialized CTC
+        if not self.talker_ctc:
+            raise ValueError(
+                "CTC decoding (generate_ctc/forward_ctc) requires a model built with "
+                "talker_ctc=True; this model has no separator/CTC heads."
+            )
         ctc_transcription_list = []
         if self.talker_ctc:
             # wavlm_hidden_stages, new_length = self.down_sampling(wavlm_hidden_stages)
