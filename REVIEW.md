@@ -297,16 +297,16 @@ masking, tiny-model forward with hybrid CE+CTC loss, greedy `generate()`).
 | ISSUE-07 | Major | fixed (guard) | `f29d538` — silent corruption replaced by a clear error when prompt lengths differ within a batch; full per-sample speech insertion is an architecture change → **needs author decision** |
 | ISSUE-08 | Major | fixed | `fc00814` |
 | ISSUE-09 | Major | fixed | `0e63af4` |
-| ISSUE-10 | Major | **needs author decision** — PCGrad is silently inactive under DDP (`hasattr(model, "encoder")` on the wrapper) and, where active, `p.grad = g` discards the CE-loss gradient on encoder/separator and bypasses DDP averaging. Activating/correcting it changes the training algorithm; not touched. |
+| ISSUE-10 | Major | fixed (author decision: opt-in flag) | `9b0dbba` — PCGrad gated behind `--pcgrad` (default **off**, matching all prior multi-GPU runs); shared params resolved on the unwrapped model; skipped with a warning under DDP (`world_size > 1`). |
 | ISSUE-11 | Major | fixed | `3c9156a` |
 | ISSUE-12 | Major | fixed | `143b767` |
 | ISSUE-13 | Minor | fixed | `ba0a7d4` |
 | ISSUE-14 | Minor | fixed | `ba0a7d4` |
 | ISSUE-15 | Minor | fixed | `ba0a7d4` |
 | ISSUE-16 | Minor | fixed | `ba0a7d4` |
-| ISSUE-17 | Minor | **needs author decision** — stripping the prompt from generated text before WER requires choosing the split point (e.g. on `<bos_response>` before special-token removal); affects monitoring only (model selection uses `eval_loss`). |
-| ISSUE-18 | Minor | deferred — `max_length=150` and `prompt_ids[1:-4]` are behaviour-affecting constants; changing them alters decoding results. |
-| ISSUE-19 | Minor | deferred — cluster-specific paths in `run.sh` defaults / `slurm/*` / `delte_dir.sh`; the harmful instance (stage-5/6 `output_dir` hijack) is fixed under ISSUE-02. |
+| ISSUE-17 | Minor | fixed | `37d8e35` — predictions are cut at `<bos_response>` (token-id level, before decoding) so `eval_wer` compares responses only; no-op for non-instruct tokenizers; `-100` padding in predictions also handled. |
+| ISSUE-18 | Minor | fixed | `f9fc1d6` — decode budget is now `--decode_max_length` (default 150 → unchanged results unless overridden); the `prompt_ids[1:-4]` reference-cleanup slice is documented in place. |
+| ISSUE-19 | Minor | fixed (partial) | `70a2b35` — `run.sh` accepts `base_data_path=` / `decoder_base=` (defaults preserve the original locations). Paths inside `slurm/*` and `delte_dir.sh` are deployment config and remain deferred. |
 | ISSUE-20 | Minor | deferred — stage-1 output naming vs `corpus` requires a data-layout decision (suffix / wav_scp variant per corpus). |
 
 **Entry-point compatibility note:** no script names or CLI flags were removed.
