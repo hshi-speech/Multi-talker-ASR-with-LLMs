@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<!-- Created by Hao at 2026-06-12 -->
+<!-- Self-contained structure reference for confirming the model architecture and the
+     training / decoding loops. Reflects the code on branch v1.0 AFTER the REVIEW.md
+     fixes (ISSUE-01..16). Open directly in a browser; no network needed. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-talker ASR with LLMs — Model Structure &amp; Loops</title>
+<style>
+  :root {
+    --enc:   #1d6fa5;  /* encoder blue   */
+    --sep:   #b46a00;  /* separator amber*/
+    --dec:   #5e35b1;  /* decoder purple */
+    --loss:  #b02a37;  /* loss red       */
+    --frozen:#6c757d;  /* frozen grey    */
+    --ok:    #2e7d32;  /* trainable green*/
+    --bg:    #f7f8fa;
+  }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+         margin: 0; background: var(--bg); color: #212529; line-height: 1.45; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 28px 80px; }
+  h1 { font-size: 1.6rem; border-bottom: 3px solid var(--dec); padding-bottom: 8px; }
+  h2 { font-size: 1.25rem; margin-top: 44px; border-left: 6px solid var(--dec);
+       padding-left: 10px; }
+  h3 { font-size: 1.02rem; margin-top: 26px; }
+  p.note { background: #fff8e1; border: 1px solid #f0d264; border-radius: 6px;
+           padding: 8px 12px; font-size: .9rem; }
+  code, pre { font-family: "JetBrains Mono", Consolas, Menlo, monospace; }
+  code { background: #eceef1; padding: 1px 5px; border-radius: 4px; font-size: .86em; }
+  pre { background: #21252b; color: #d7dae0; padding: 14px 16px; border-radius: 8px;
+        overflow-x: auto; font-size: .8rem; line-height: 1.5; }
+  pre .c  { color: #7f8c98; }            /* comment   */
+  pre .t  { color: #98c379; }            /* token     */
+  pre .s  { color: #61afef; }            /* speech    */
+  pre .i  { color: #e06c75; }            /* ignored   */
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .88rem; }
+  th, td { border: 1px solid #cfd4da; padding: 6px 10px; text-align: left;
+           vertical-align: top; }
+  th { background: #e9ecf1; }
+  /* diagram boxes */
+  .flow   { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .row    { display: flex; gap: 18px; align-items: stretch; justify-content: center;
+            flex-wrap: wrap; }
+  .box    { border: 2px solid #444; border-radius: 8px; padding: 8px 14px;
+            background: #fff; min-width: 200px; text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,.12); margin: 4px 0; }
+  .box small { display: block; color: #555; font-size: .76rem; margin-top: 2px; }
+  .box .dim { font-family: Consolas, monospace; font-size: .78rem; color: #1d6fa5; }
+  .enc  { border-color: var(--enc);  } .enc  b { color: var(--enc); }
+  .sep  { border-color: var(--sep);  } .sep  b { color: var(--sep); }
+  .dec  { border-color: var(--dec);  } .dec  b { color: var(--dec); }
+  .loss { border-color: var(--loss); } .loss b { color: var(--loss); }
+  .opt  { border-style: dashed; background: #fcfcff; }
+  .arrow { font-size: 1.1rem; color: #555; margin: 1px 0; text-align: center; }
+  .tag { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: .72rem;
+         color: #fff; margin-left: 6px; vertical-align: 2px; }
+  .tag.frz { background: var(--frozen); } .tag.trn { background: var(--ok); }
+  .tag.lora{ background: #c2185b; }      .tag.optt{ background: #8d6e63; }
+  .twocol { display: flex; gap: 26px; flex-wrap: wrap; }
+  .twocol > div { flex: 1 1 460px; }
+  .legend { font-size: .82rem; background: #fff; border: 1px solid #d7dbe0;
+            border-radius: 8px; padding: 8px 14px; margin-top: 8px; }
+  footer { margin-top: 60px; font-size: .78rem; color: #777; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Multi-talker ASR with LLMs — Model Structure &amp; Training/Decoding Loops</h1>
+<p>Companion to <code>WORKFLOW.html</code> / <code>CODE_GUIDE.html</code>. Everything below was
+cross-checked against the source on <strong>branch v1.0 after the REVIEW.md fixes</strong>;
+each box names the file that implements it. Default numbers assume
+<code>wavlm-large</code> (hidden 1024, adapter ×3 stride-2 convs) and a LLaMA decoder.</p>
+
+<div class="legend">
+  <b>Legend:</b>
+  <span class="tag trn">trainable</span> typically updated;
+  <span class="tag frz">frozen</span> frozen by default (<code>freeze_model</code> +
+  <code>unfreeze_selected_params</code>, controlled by <code>train_mode</code> and the
+  <code>partial_*_unfreeze</code> flags);
+  <span class="tag lora">LoRA</span> low-rank adapters;
+  <span class="tag optt">optional</span> only present for certain flags.
+  Dashed boxes are optional modules.
+</div>
+
+<!-- ================================================================ -->
+<h2>1&nbsp;· Model structure (forward path)</h2>
+
+<div class="flow">
+  <div class="box enc"><b>Input waveform</b>
+    <span class="dim">(B, T<sub>samples</sub>) @ 16 kHz</span>
+    <small>+ attention_mask (B, T<sub>samples</sub>) from the feature-extractor pad</small></div>
+  <div class="arrow">▼</div>
+
+  <div class="box enc"><b>WavLM conv feature encoder</b> <span class="tag frz">frozen</span>
+    <span class="dim">→ (B, T, 1024) &nbsp; T ≈ T<sub>samples</sub>/320 (20 ms hop)</span>
+    <small>models/modeling_wavlm.py · frozen via <code>freeze_feature_encoder=true</code></small></div>
+  <div class="arrow">▼</div>
+
+  <div class="box enc"><b>WavLM transformer (24 layers)</b>
+    <span class="tag frz">frozen</span><span class="tag trn">if encoder_freeze=false</span>
+    <span class="dim">→ (B, T, 1024) = <code>encoder_outputs[1]</code> “pre-adapter”</span>
+    <small>this tensor feeds the SEPARATOR/CTC branch and the cross-attn memory</small></div>
+
+  <div class="row">
+    <!-- left: adapter -> decoder path -->
+    <div class="flow" style="flex:1 1 380px">
+      <div class="arrow">▼ <small>(main AED path)</small></div>
+      <div class="box enc"><b>WavLM adapter</b> <span class="tag trn">trainable</span>
+        <span class="dim">3 × (Conv1d stride 2 + GLU) → (B, T′, 1024), T′ = T/8</span>
+        <small>= <code>encoder_outputs[0]</code> · unfrozen by name match “adapter”</small></div>
+      <div class="arrow">▼</div>
+      <div class="box enc"><b>enc_to_dec_proj</b> <span class="tag trn">trainable</span>
+        <span class="dim">Linear 1024 → d<sub>model</sub> → (B, T′, d<sub>model</sub>)</span>
+        <small>modeling_speech_encoder_decoder_llama.py · unfrozen via
+        <code>partial_others_unfreeze="enc_to_dec_proj"</code></small></div>
+      <div class="arrow">▼ <small>speech embeddings, inserted INSIDE the decoder</small></div>
+    </div>
+
+    <!-- right: separator / ctc path -->
+    <div class="flow" style="flex:1 1 380px">
+      <div class="arrow">▼ <small>(only when <code>talker_ctc=true</code>)</small></div>
+      <div class="box sep opt"><b>Separator</b> <span class="tag trn">trainable</span><span class="tag optt">optional</span>
+        <span class="dim">Linear 1024→h → custom LSTM ×2 → N branches → N × (B, T, 1024)</span>
+        <small>models/separator.py · h = <code>separator_hidden</code></small></div>
+      <div class="arrow">▼</div>
+      <div class="box sep opt"><b>serialized_ctc[i], i = 1…N</b> <span class="tag trn">trainable</span>
+        <span class="dim">Linear 1024 → V+1 &nbsp; (blank id = V = decoder.vocab_size)</span>
+        <small>models/ctc.py · one head per speaker · input lengths from
+        <code>_get_feature_vector_attention_mask_x0</code> (pre-adapter T)</small></div>
+      <div class="arrow">▼ <small>CTC loss / CTC greedy decode / optional refiner &amp; bridge</small></div>
+    </div>
+  </div>
+
+  <div class="box dec"><b>LLaMA decoder</b> <span class="tag frz">base frozen</span><span class="tag lora">self-attn LoRA</span>
+    <span class="dim">layers: self-attn (k/q/v/o ± PEFT LoRA) → [cross-attn adapter] → MLP</span>
+    <small>models/modeling_llama.py + models/llama_modules.py ·
+    speech embeddings are concatenated into the hidden states in
+    <code>LlamaModel.forward</code> (see §2) · <code>lm_head</code>/<code>embed_tokens</code>
+    unfrozen via <code>partial_decoder_unfreeze</code></small></div>
+
+  <div class="row">
+    <div class="box dec opt" style="max-width:480px"><b>Per-layer cross-attention adapter</b>
+      <span class="tag optt">optional</span><span class="tag lora">adapgatetiny: rank-gated LoRA</span>
+      <span class="dim">Q = h<sub>text</sub>, K/V = memory; memory =
+      <code>mix</code> (B,T,1024) or <code>sep</code> (B,N·T,1024)</span>
+      <small>tiny / gatetiny / adapgatetiny / ctcaware — one module per decoder layer,
+      applied after self-attention (<code>decoder_cross_attention*</code> flags)</small></div>
+    <div class="box loss" style="max-width:480px"><b>HybridLoss</b>
+      <span class="dim">L = α·CE(logits, labels) + (1−α)·mean<sub>i</sub> CTC<sub>i</sub></span>
+      <small>models/losses.py · α = <code>ctc_alpha</code> (default 0.7) ·
+      <code>train_mode</code> ∈ {attention, ctc, hybrid} selects active terms ·
+      CE ignore_index = −100 · fixed-order CTC (head i ↔ speaker i, no PIT)</small></div>
+  </div>
+</div>
+
+<h3>Two independent LoRA groups (do not conflate)</h3>
+<table>
+<tr><th></th><th>Self-attention LoRA</th><th>Cross-attention LoRA</th></tr>
+<tr><td>Where</td>
+    <td>PEFT-injected into decoder <code>k/q/v/o_proj</code>
+        (<code>src/insert_adapter_decoder.py</code>, when <code>adapter_only_decoder=true</code>)</td>
+    <td>inside the <code>adapgatetiny</code> cross-attn adapter
+        (<code>models/adap_gate_tiny_crossatt_module.py</code>)</td></tr>
+<tr><td>Hyper-params</td>
+    <td><code>selfattn_lora_r / selfattn_lora_alpha / selfattn_lora_dropout</code></td>
+    <td><code>r_max / lora_alpha</code> (rank-gated, prunable)</td></tr>
+<tr><td>After training</td>
+    <td>saved as <code>model_unmerge.safetensors</code>, then merged into plain weights by
+        <code>utils/merge_adapter.py --lora_r --lora_alpha</code> → <code>model.safetensors</code></td>
+    <td>kept as-is in the checkpoint (own parameter names)</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>2&nbsp;· Token / label layout (the part worth confirming carefully)</h2>
+
+<p>The collator (<code>src/data_collator.py</code>) builds <code>decoder_input_ids</code> and
+<code>labels</code>; the model only prepends <code>speech_len × (−100)</code> to labels to
+re-align after the speech insertion. CE is computed <b>without an extra shift</b> —
+logits[t] is compared to labels[t] directly.</p>
+
+<h3>Non-instruct mode (speech inserted right after BOS)</h3>
+<pre>
+<span class="c"># tokens l1..lA = speaker-1, l(A+1)..lL = speaker-2, joined by &lt;sc&gt;; S = speech_len (T′)</span>
+decoder_input_ids : <span class="t">[BOS]</span>  <span class="t">l1 l2 … &lt;sc&gt; … lL</span>          <span class="c">(length L+1; full labels, ISSUE-06 fix)</span>
+embeddings        : <span class="t">[BOS]</span>  <span class="s">[speech ×S]</span>  <span class="t">l1 l2 … lL</span>   <span class="c">(insertion in LlamaModel.forward)</span>
+labels            : <span class="i">[−100 ×S]</span>  <span class="t">l1 l2 … lL</span> <span class="t">EOS</span> <span class="i">−100…</span>  <span class="c">(EOS at first pad; −100 = ignored)</span>
+                     <span class="c">↑ last speech frame predicts l1; li predicts l(i+1); lL predicts EOS</span>
+</pre>
+
+<h3>Instruct mode (speech inserted between &lt;bos_speech&gt; and &lt;eos_speech&gt;)</h3>
+<pre>
+prompt_ids        : <span class="t">&lt;bos_prompt&gt; p1 … pK &lt;eos_prompt&gt; &lt;bos_speech&gt; &lt;eos_speech&gt; &lt;bos_response&gt;</span>
+decoder_input_ids : <span class="t">[BOS]</span> <span class="t">prompt_ids</span> <span class="t">r1 … rL</span>                       <span class="c">(r* = serialized response)</span>
+embeddings        : <span class="t">[BOS] … &lt;bos_speech&gt;</span> <span class="s">[speech ×S]</span> <span class="t">&lt;eos_speech&gt; &lt;bos_response&gt; r1 … rL</span>
+labels            : <span class="i">[−100 ×S]</span> <span class="i">[−100 × prompt_token_len]</span> <span class="t">r1 … rL</span> <span class="t">EOS</span> <span class="i">−100…</span>
+                     <span class="c">prompt prefix masked per-sample via prompt_token_len (collator)</span>
+</pre>
+
+<p class="note"><b>Batch-uniformity assumption (ISSUE-07):</b> the
+<code>&lt;bos_speech&gt;/&lt;eos_speech&gt;/&lt;bos_response&gt;</code> positions are taken from batch
+row 0 and applied to all rows. This is valid because the dataset uses ONE constant prompt;
+the code now raises a clear error if a batch ever violates it.</p>
+
+<h3>Per-speaker CTC labels</h3>
+<pre>
+<span class="c"># split from decoder_input_ids (utils/split_labels_by_sc.py), NOT from labels:</span>
+non-instruct : take decoder_input_ids[:, 1:]               <span class="c"># drop [BOS]</span>
+instruct     : take everything after &lt;bos_response&gt;        <span class="c"># &lt;eos_response&gt; → pad first</span>
+then         : split at &lt;sc&gt; into exactly N segments  → (label_i, len_i) per speaker
+CTC_i        = CTCLoss(log_softmax(ctc_lo_i(sep_i)), label_i, hlens, len_i)   <span class="c"># blank = V</span>
+</pre>
+
+<!-- ================================================================ -->
+<h2>3&nbsp;· Training loop (run.sh stage 3)</h2>
+
+<div class="twocol">
+<div>
+<h3>Per-run setup (finetune_asr.py)</h3>
+<pre>
+1  parse args (src/arguments.py)
+2  resume_or_raise()        <span class="c"># auto-resume if ckpt exists</span>
+3  load DatasetDict          (datasets/&lt;corpus&gt;)
+4  load config + copy model flags onto it
+5  load FE / tokenizer / AED model (dump/…)
+6  [optional] load_sep_ctc_from_partial()
+7  freeze_model → insert self-attn LoRA
+   → unfreeze_selected_params(train_mode, …)
+8  maybe_resample_dataset (→16 kHz)
+9  preprocess_and_filter:
+     audio → input_values, len filter,
+     text  → labels, prompt_ids, prompt_token_len
+10 collator + Seq2SeqTrainer
+   (remove_unused_columns=False, ISSUE-01)
+11 trainer.train()
+12 save: ctc / full-finetune → model.safetensors
+        LoRA → model_unmerge.safetensors
+        → merge_adapter (r, α) → model.safetensors
+        → fix_safetensors_metadata
+</pre>
+</div>
+<div>
+<h3>Per-step loop (src/trainer_seq2seq.py)</h3>
+<pre>
+for batch in dataloader:                <span class="c"># DDP, group_by_length</span>
+  batch = collator(features)           <span class="c"># §2 layout</span>
+  out   = model(inputs=input_values,
+                attention_mask,        <span class="c"># audio mask</span>
+                decoder_input_ids,
+                labels, prompt_ids)
+        <span class="c"># forward: encoder → [separator→CTC] →</span>
+        <span class="c">#          decoder(+speech insertion) → HybridLoss</span>
+  [PCGrad on encoder/separator grads]  <span class="c"># NOTE: silently</span>
+                                       <span class="c"># inactive under DDP — ISSUE-10,</span>
+                                       <span class="c"># needs author decision</span>
+  accelerator.backward(loss); clip; step
+
+every eval_steps:
+  evaluate() — loss + (predict_with_generate)
+  greedy generate → WER                <span class="c"># prompt words leak into</span>
+                                       <span class="c"># eval_wer (ISSUE-17, monitoring only;</span>
+                                       <span class="c"># best model uses eval_loss)</span>
+every save_steps: checkpoint (save_total_limit=5)
+</pre>
+</div>
+</div>
+
+<h3><code>train_mode</code> — what trains, what is saved</h3>
+<table>
+<tr><th>train_mode</th><th>Loss terms</th><th>LoRA inserted</th><th>Typically trainable</th><th>Final artifact</th></tr>
+<tr><td><code>ctc</code></td><td>CTC only</td><td>no</td>
+    <td>separator + CTC heads (+ whatever <code>partial_*</code> matches)</td>
+    <td><code>model.safetensors</code></td></tr>
+<tr><td><code>attention</code></td><td>CE only</td><td>yes (if <code>adapter_only_decoder</code>)</td>
+    <td>adapter, enc_to_dec_proj, self-attn LoRA, partial_* matches</td>
+    <td><code>model_unmerge</code> → merged <code>model.safetensors</code></td></tr>
+<tr><td><code>hybrid</code></td><td>α·CE + (1−α)·CTC</td><td>yes (if <code>adapter_only_decoder</code>)</td>
+    <td>all of the above + separator + CTC heads</td>
+    <td><code>model_unmerge</code> → merged <code>model.safetensors</code></td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>4&nbsp;· Decoding loops</h2>
+
+<div class="twocol">
+<div>
+<h3>Attention (AED) decoding — stage 4<br><small>model.generate → GenerationMixin_Instruct (utils/generation_utils.py)</small></h3>
+<pre>
+<span class="c"># per utterance (batch = 1), greedy, use_cache=True</span>
+1  encoder_outputs = encoder(input_values, mask=1s)
+2  input_ids = [BOS]            <span class="c"># decoder_start</span>
+   if instruct: input_ids += prompt_ids
+3  PREFILL: decoder forward
+     · finds &lt;bos_speech&gt;/&lt;eos_speech&gt; adjacent
+       → inserts speech embeddings (×S)
+     · KV-cache now holds  text+S  positions
+4  LOOP until EOS or max_length=150:
+     logits[:, −1] → argmax → next token
+     decoder forward(1 token, cache)
+       <span class="c"># len(seq)==1 → no re-insertion</span>
+5  decode text; keep &lt;sc&gt; etc.; strip other
+   specials (skip_special_tokens regex)
+6  write &lt;set&gt;_label.text / _decod.text
+   → utils/compute-wer.py
+</pre>
+<p class="note">Requires <code>transformers==4.53.x</code>: with ≤4.49 HF’s own
+GenerationMixin shadows this mix-in in the MRO and generation breaks (ISSUE-05).</p>
+</div>
+<div>
+<h3>CTC decoding — stage 5<br><small>model.generate_ctc → forward_ctc (requires <code>talker_ctc=true</code>)</small></h3>
+<pre>
+1  encoder_outputs = encoder(input_values)
+2  sep_i = separator(pre-adapter states)   <span class="c"># i=1…N</span>
+3  for each head i:
+     ids = argmax(ctc_lo_i(sep_i))         <span class="c"># (B, T)</span>
+     collapse duplicates, remove blank(=V)
+4  transcription = concat over heads
+   <span class="c"># speaker order = head order (fixed)</span>
+5  decode + score like the AED path
+   <span class="c"># labels additionally strip the prompt text</span>
+</pre>
+<h3>Multi-GPU inference — stage 6<br><small>inference_asr_gpus.py</small></h3>
+<pre>
+setup_distributed()          <span class="c"># BEFORE model.to —</span>
+model.to(cuda:local_rank)    <span class="c"># ISSUE-03 fix</span>
+dataset.shard(world_size, rank, contiguous)
+per-rank loop = AED/CTC decode (left column)
+→ per-rank files → barrier → rank0 merges
+</pre>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<h2>5&nbsp;· Pipeline stages (run.sh) and artifacts</h2>
+<pre>
+stage 1  utils/generate_dataset.py     wav.scp/text → DatasetDict           → datasets/&lt;corpus&gt;
+stage 2  utils/create_from_pretrained  wavlm-large ⊕ LLaMA, +special tokens,
+                                       resize embeddings                    → dump/&lt;enc&gt;-&lt;dec&gt;
+stage 3  finetune_asr.py (DDP, all GPUs)  train (§3)                        → &lt;output_dir&gt;/
+           output_dir is DERIVED from the flags:
+           mode_&lt;train_mode&gt;-&lt;enc&gt;-&lt;dec&gt;[-encoder_freeze…][-ctc][-refine]
+           [-cross_attention_&lt;type&gt;_&lt;feat&gt;][-rmax…][-&lt;bridge&gt;]-&lt;corpus&gt;
+           ⇒ stages 4/5/6 MUST be called with the same flags
+stage 4  inference_asr.py (1 GPU)      attention decoding + WER             → &lt;set&gt;_decod.wer
+stage 5  inference_asr.py              CTC decoding (--ctc_decoding=true)
+stage 6  inference_asr_gpus.py (DDP)   sharded decoding / pseudo-labels
+</pre>
+
+<p class="note"><b>Open items you may still want to decide</b> (details in
+<code>REVIEW.md</code>): ISSUE-10 (PCGrad inactive under DDP / gradient overwrite
+semantics), ISSUE-17 (prompt words in monitored <code>eval_wer</code>), ISSUE-18
+(<code>max_length=150</code> decode budget vs. <code>config.max_length=200</code>).</p>
+
+<footer>Generated 2026-06-12 from branch v1.0 (post-review). Verified against:
+models/modeling_speech_encoder_decoder_llama.py, models/modeling_llama.py,
+src/data_collator.py, models/losses.py, utils/generation_utils.py,
+utils/generation_ctc_utils.py, src/trainer_seq2seq.py, run.sh.</footer>
+
+</div>
+</body>
+</html>
