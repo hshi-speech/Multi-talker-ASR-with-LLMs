@@ -661,8 +661,8 @@
 │   ├── <span class="file">generation_utils.py</span>             <span class="note">GenerationMixin_Instruct.generate (vendored from HF + prompt injection)</span>
 │   └── <span class="file">generation_ctc_utils.py</span>         <span class="note">GenerationMixin_CTC.generate_ctc — CTC argmax decoding</span>
 │
-├── <span class="dir">slurm/</span>                              <span class="note">SLURM submit scripts per LLaMA size</span>
-│   ├── <span class="file">template.slurm</span>
+├── <span class="dir">scripts/</span>                            <span class="note">local launcher scripts per LLaMA size (former SLURM submitters)</span>
+│   ├── <span class="file">template.slurm</span>                     <span class="note">retired SLURM template (reference only)</span>
 │   ├── <span class="file">sot_submit_{1b,3b,8b}.sh</span>           <span class="note">SOT-only training</span>
 │   ├── <span class="file">ctc_submit_{1b,3b,8b}.sh</span>           <span class="note">CTC-only training</span>
 │   ├── <span class="file">crossatt_submit_{1b,3b,8b}.sh</span>      <span class="note">cross-attention experiments</span>
@@ -784,18 +784,18 @@
   &lt;same flags; output_dir must contain a trained model&gt;
 </code></pre>
 
-    <h3>SLURM submission (LLaMA-3B on cluster)</h3>
-    <pre><code>cd slurm
-bash submit_3b.sh
+    <h3>Launcher scripts (LLaMA-3B, local machine — no SLURM)</h3>
+    <pre><code>bash scripts/submit_3b.sh
 # or for a specific recipe variant:
-bash sot_submit_3b.sh
-bash crossatt_submit_3b.sh
-bash cross_gate_submit_3b.sh</code></pre>
+bash scripts/sot_submit_3b.sh
+bash scripts/crossatt_submit_3b.sh
+bash scripts/cross_gate_submit_3b.sh</code></pre>
 
     <div class="callout muted">
-      Tip: SLURM scripts pre-define <code>encoder</code> / <code>decoder</code> / <code>corpus</code> /
-      <code>talker_numbers</code> at the top of each file. Edit those, then call the script — it forwards
-      everything down to <code>run.sh</code> via <code>template.slurm</code>.
+      Tip: the launcher scripts pre-define <code>encoder</code> / <code>decoder</code> / <code>corpus</code> /
+      <code>talker_numbers</code> at the top of each file. Edit those, then run the script — it calls
+      <code>run.sh</code> directly (defaults for all other flags live in <code>run.sh</code> itself); the
+      configurations run sequentially and failures are reported at the end.
     </div>
 
     <h3>Where outputs land</h3>

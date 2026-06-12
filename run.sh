@@ -60,6 +60,44 @@ for arg in "$@"; do
   esac
 done
 
+# --------------------------------------------------------------------------
+# Defaults (moved here from the retired slurm/template.slurm / run_job.sh, so
+# the launcher scripts in scripts/ — or you, on the command line — can call
+# run.sh directly with only the flags that differ).
+# Single '-' keeps explicitly-passed empty strings; ':-' also replaces empty.
+# --------------------------------------------------------------------------
+stage="${stage-3}"
+stop_stage="${stop_stage-3}"
+epoch="${epoch-50}"
+encoder="${encoder-wavlm}"
+eval_steps="${eval_steps-1600}"
+decoder="${decoder-Llama-3.2-1B}"
+corpus="${corpus-libri3mix_clean}"
+instruct="${instruct-false}"
+talker_ctc="${talker_ctc-true}"
+talker_ctc_refine="${talker_ctc_refine-false}"
+talker_numbers="${talker_numbers-3}"
+separator_hidden="${separator_hidden-796}"
+decoder_cross_attention="${decoder_cross_attention-false}"
+decoder_cross_attention_type="${decoder_cross_attention_type-tiny}"
+decoder_cross_attention_feature="${decoder_cross_attention_feature-raw}"
+r_max="${r_max-8}"
+lora_alpha="${lora_alpha-8}"
+train_mode="${train_mode-hybrid}"
+encoder_freeze="${encoder_freeze-false}"
+decoder_freeze="${decoder_freeze-true}"
+adapter_only_decoder="${adapter_only_decoder-true}"
+precision="${precision:-fp32}"
+ctc_bridge="${ctc_bridge:-false}"
+ctc_bridge_type="${ctc_bridge_type:-raw}"
+per_device_train_batch_size="${per_device_train_batch_size-16}"
+per_device_eval_batch_size="${per_device_eval_batch_size-16}"
+partial_encoder_unfreeze="${partial_encoder_unfreeze-}"
+partial_decoder_unfreeze="${partial_decoder_unfreeze-}"
+partial_others_unfreeze="${partial_others_unfreeze-enc_to_dec_proj}"
+pretrain_separator_path="${pretrain_separator_path:-none}"
+output_dir="${output_dir-exp}"
+
 echo "[run] stage=$stage"
 echo "[run] stop_stage=$stop_stage"
 echo "[run] train_mode=$train_mode"
