@@ -154,8 +154,9 @@ def main():
     model.generation_config.forced_decoder_ids = None
     model.config.forced_decoder_ids = None
 
-    # 8. Dataset
-    # raw_datasets = maybe_resample_dataset(raw_datasets, data_args, feature_extractor)
+    # 8. Dataset — align sampling rate with the feature extractor (no-op at 16 kHz),
+    # matching the training pipeline.
+    raw_datasets = maybe_resample_dataset(raw_datasets, data_args, feature_extractor)
     vectorized_datasets = preprocess_and_filter(
             raw_datasets,
             data_args,
