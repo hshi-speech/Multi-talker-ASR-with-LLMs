@@ -45,7 +45,14 @@ from torch.utils.data import Dataset, DataLoader, Dataset, IterableDataset, Rand
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
-from transformers.trainer import Trainer
+import torch.distributed as dist
+import huggingface_hub.utils as hf_hub_utils
+
+from transformers.trainer import Trainer, TRAINER_STATE_NAME, _is_peft_model
+from transformers.modeling_utils import unwrap_model
+from transformers.integrations import hp_params
+from transformers.integrations.deepspeed import deepspeed_init, deepspeed_load_checkpoint
+from transformers.integrations.tpu import tpu_spmd_dataloader
 from transformers.utils import is_datasets_available, logging
 from transformers.utils.deprecation import deprecate_kwarg
 from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
