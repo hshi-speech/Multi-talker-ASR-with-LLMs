@@ -75,6 +75,10 @@ echo "[run] partial_encoder_unfreeze=$partial_encoder_unfreeze"
 echo "[run] partial_decoder_unfreeze=$partial_decoder_unfreeze"
 echo "[run] partial_others_unfreeze=$partial_others_unfreeze"
 echo "[run] eval_steps=$eval_steps"
+# Both optional since the move away from SLURM: empty/unset virtual_env falls
+# back to the python on PATH (see PY_BIN below); cache_dir defaults to ~/.hf_cache.
+virtual_env="${virtual_env-}"
+cache_dir="${cache_dir:-$HOME/.hf_cache}"
 echo "[run] virtual_env=$virtual_env"
 echo "[run] cache_dir=$cache_dir"
 seed="${seed-42}"
@@ -142,7 +146,13 @@ case "$precision" in
 esac
 echo "[run] precision=$precision"
 
-PY_BIN="$virtual_env/bin/python"
+if [ -n "${virtual_env}" ] && [ -x "${virtual_env}/bin/python" ]; then
+    PY_BIN="${virtual_env}/bin/python"
+else
+    PY_BIN="$(command -v python3 || command -v python)"
+    [ -n "${virtual_env}" ] && echo "[run] WARNING: ${virtual_env}/bin/python not found; falling back to ${PY_BIN}"
+fi
+echo "[run] PY_BIN=$PY_BIN"
 master_port=$(( 29501 + RANDOM % 4900 ))
 
 output_dir=/lustre/users/shi/toolkits/m_speaker_llm/Multi-talker-ASR-with-LLMs/exp_sot_finished/wavlm-Llama-3.2-1B-Instruct-encoder_unfreeze-decoder_freeze-adater_decoder-libri2mix_clean

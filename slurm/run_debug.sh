@@ -1,13 +1,10 @@
-#!/bin/bash
-#SBATCH --job-name=1b-2spk_n
-#SBATCH --partition=002-partition-all
-#SBATCH --gpus=8
-#SBATCH --container-image=/lustre/users/shi/audio_llm-latest.sqsh
-#SBATCH --container-mounts=/lustre:/lustre
-#SBATCH --exclusive
+#!/usr/bin/env bash
+# Converted from a SLURM job file to a plain shell script (runs directly,
+# no sbatch/container). Limit GPUs with CUDA_VISIBLE_DEVICES if needed.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # source /lustre/users/shi/toolkits/m_speaker_llm/Multi-Speaker-ASR-with-LLM/venv/bin/activate
-cd /lustre/users/shi/toolkits/m_speaker_llm/Multi-talker-ASR-with-LLMs/slurm
 
 # export PATH="/lustre/users/shi/toolkits/m_speaker_llm/Multi-Speaker-ASR-with-LLM/venv/bin:$PATH"
 
@@ -42,7 +39,8 @@ instruct=false
 talker_ctc=true
 talker_ctc_refine=false
 eval_steps=160
-virtual_env=/lustre/users/shi/toolkits/m_speaker_llm/venv
+# Empty -> run.sh falls back to the python on PATH; point this at a venv if you use one
+virtual_env=""
 ctc_bridge=false
 ctc_bridge_type=gate
 
@@ -50,7 +48,7 @@ r_max=4
 lora_alpha=4
 
 
-cache_dir=/lustre/users/shi/.hf_cache
+cache_dir="$HOME/.hf_cache"
 
 output_dir=exp
 

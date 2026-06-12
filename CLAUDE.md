@@ -32,9 +32,14 @@ deterministically from the flag values** (e.g. `mode_hybrid-wavlm-Llama-3.2-1B-e
 Stages 4/5/6 must be invoked with the *same* flags that produced the training `output_dir`, or
 they will look in the wrong directory. See `README.md` for full per-stage flag lists.
 
-SLURM submitters in `slurm/` wrap `run.sh` via `slurm/template.slurm`; edit the flags at the top
-of e.g. `slurm/sot_submit_3b.sh` and submit. Variants: `sot_*` (SOT only), `ctc_*` (CTC only),
-`crossatt_*` (cross-attention adapters), `cross_gate_*` (gated/LoRA cross-attention).
+The scripts in `slurm/` are now **plain shell scripts (no SLURM)**: each `*submit*.sh` runs its
+configurations sequentially on the local machine via `slurm/run_job.sh` (the plain-bash
+replacement for the retired `template.slurm`, same key=value interface). Edit the flags at the
+top of e.g. `slurm/sot_submit_3b.sh` and run it with `bash`; limit GPUs with
+`CUDA_VISIBLE_DEVICES`. Variants: `sot_*` (SOT only), `ctc_*` (CTC only), `crossatt_*`
+(cross-attention adapters), `cross_gate_*` (gated/LoRA cross-attention). `run.sh` falls back to
+the `python3` on PATH when `virtual_env` is empty/unset, and `cache_dir` defaults to
+`~/.hf_cache`.
 
 > `requirements.txt` is an incomplete `pip freeze` and **omits the core ML deps**. You also need
 > at least: `torch transformers peft accelerate datasets safetensors librosa soundfile sentencepiece jiwer`.

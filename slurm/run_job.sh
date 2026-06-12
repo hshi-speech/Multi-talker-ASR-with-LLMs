@@ -1,20 +1,22 @@
-#!/bin/bash
-# NOTE: SUPERSEDED — this SLURM job template is no longer used. The submit
-# scripts in this directory now call run_job.sh (plain shell, no sbatch).
-# Kept only as a reference for the old cluster/container settings.
-#SBATCH --partition=002-partition-all
-#SBATCH --gpus=8
-#SBATCH --exclusive
-#SBATCH --container-image=/lustre/users/shi/audio_llm-latest.sqsh
-#SBATCH --container-mounts=/lustre:/lustre
+#!/usr/bin/env bash
+# Created by Hao at 2026-06-12
+# Plain-shell replacement for template.slurm — no SLURM, no container.
+# Runs ONE configuration directly on the local machine (all visible GPUs).
+#
+# Usage (same key=value interface template.slurm had):
+#   bash run_job.sh decoder=Llama-3.2-1B corpus=libri2mix_noisy instruct=false ...
+#
+# Limit GPUs with CUDA_VISIBLE_DEVICES, e.g.:
+#   CUDA_VISIBLE_DEVICES=0,1 bash run_job.sh stage=3 stop_stage=3 ...
 
 set -euo pipefail
-cd /lustre/users/shi/toolkits/m_speaker_llm/Multi-talker-ASR-with-LLMs/slurm
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
-echo "[template.slurm] args: $@"
+echo "[run_job] args: $@"
 
 ########################################
-# 1) Parse script args: key=value after template.slurm
+# 1) Parse script args: key=value
 ########################################
 for arg in "$@"; do
   case "$arg" in
@@ -51,16 +53,17 @@ for arg in "$@"; do
     r_max=*)                          r_max="${arg#*=}" ;;
     lora_alpha=*)                     lora_alpha="${arg#*=}" ;;
     seed=*)                           seed="${arg#*=}" ;;
-    ctc_bridge=*)           ctc_bridge="${arg#*=}" ;;
-    ctc_bridge_type=*)      ctc_bridge_type="${arg#*=}" ;;
-    # ignore unknown keys instead of failing:
-    # *) echo "[WARN] Unknown arg: $arg" >&2 ;;
+    ctc_bridge=*)                     ctc_bridge="${arg#*=}" ;;
+    ctc_bridge_type=*)                ctc_bridge_type="${arg#*=}" ;;
+    pcgrad=*)                         pcgrad="${arg#*=}" ;;
+    base_data_path=*)                 base_data_path="${arg#*=}" ;;
+    decoder_base=*)                   decoder_base="${arg#*=}" ;;
+    *) echo "[run_job] WARN: unknown arg: $arg" >&2 ;;
   esac
 done
 
-
 ########################################
-# 2) Defaults — use single '-' (respect empty strings)
+# 2) Defaults — single '-' respects explicitly-passed empty strings
 ########################################
 # Fixed/common parameters
 stage="${stage-3}"
@@ -68,8 +71,9 @@ stop_stage="${stop_stage-3}"
 epoch="${epoch-50}"
 encoder="${encoder-wavlm}"
 eval_steps="${eval_steps-1600}"
-virtual_env="${virtual_env-/lustre/users/shi/toolkits/m_speaker_llm/venv}"
-cache_dir="${cache_dir-/lustre/users/shi/.hf_cache}"
+# Empty virtual_env -> run.sh uses the python on PATH
+virtual_env="${virtual_env-}"
+cache_dir="${cache_dir-$HOME/.hf_cache}"
 
 # Sweep parameters
 decoder="${decoder-Llama-3.2-1B}"
@@ -93,6 +97,7 @@ adapter_only_decoder="${adapter_only_decoder-true}"
 precision="${precision:-fp32}"
 ctc_bridge="${ctc_bridge:-false}"
 ctc_bridge_type="${ctc_bridge_type:-raw}"
+pcgrad="${pcgrad-false}"
 
 # Batch sizes
 per_device_train_batch_size="${per_device_train_batch_size-16}"
@@ -106,11 +111,17 @@ pretrain_model_path="${pretrain_model_path-}"                             # keep
 seed="${seed-42}"
 pretrain_separator_path="${pretrain_separator_path:-none}"
 
+# Overridable base paths (run.sh has the original defaults; pass only if set)
+base_data_path="${base_data_path-}"
+decoder_base="${decoder_base-}"
+EXTRA_PATH_ARGS=()
+[ -n "$base_data_path" ] && EXTRA_PATH_ARGS+=("base_data_path=$base_data_path")
+[ -n "$decoder_base" ]   && EXTRA_PATH_ARGS+=("decoder_base=$decoder_base")
+
 ########################################
-# 3) Output directory tag/naming (optional)
+# 3) Run directly (was: inside the SLURM container)
 ########################################
-tag="dec=${decoder}_corpus=${corpus}_ins=${instruct}_ctc=${talker_ctc}_tn=${talker_numbers}"
-output_dir="${output_dir-exp}"   # root; run.sh can append tag/time if needed
+output_dir="${output_dir-exp}"   # root; run.sh appends the flag-derived tag
 
 bash ../run.sh \
   stage=$stage \
@@ -145,7 +156,8 @@ bash ../run.sh \
   talker_numbers=$talker_numbers \
   ctc_bridge=$ctc_bridge \
   ctc_bridge_type=$ctc_bridge_type \
+  pcgrad=$pcgrad \
   output_dir="$output_dir" \
   eval_steps=$eval_steps \
-  virtual_env=$virtual_env
-
+  virtual_env="$virtual_env" \
+  ${EXTRA_PATH_ARGS[@]+"${EXTRA_PATH_ARGS[@]}"}
