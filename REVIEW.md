@@ -110,13 +110,16 @@ search, and `load_best_model_at_end` under DDP. *Fix:* add the missing imports
 `requirements.txt` (whole file), `utils/generation_utils.py:30-70`, `utils/generation_ctc_utils.py:30-70`. **Critical.**
 `requirements.txt` is an incomplete freeze: it pins neither `torch` nor
 `transformers` and omits `peft`, `evaluate`, and `typeguard` (all imported by
-the code). The vendored generation/trainer files were copied from
-transformers ≈4.46–4.49 (`deprecate_kwarg(..., version="4.50")`, "v4.47
-semantics") and import `QuantizedCacheConfig` / `QUANT_BACKEND_CLASSES_MAPPING`,
-which were removed in newer transformers — with 4.57 installed, **every entry
-point fails at import**. *Fix:* document and pin the supported core stack
-(`transformers==4.49.x`, plus `peft`, `evaluate`, `typeguard`) in
-`requirements.txt`; environment verified with `transformers==4.49.0`.
+the code). The supported transformers window turned out to be narrow in *both*
+directions: with ≥4.55 the vendored generation/trainer files fail at import
+(`QuantizedCacheConfig`, `_crop_past_key_values` removed — with 4.57 installed
+**every entry point fails at import**); with ≤4.49 everything imports but
+`PreTrainedModel` still inherits HF's `GenerationMixin`, which **shadows the
+fork's `GenerationMixin_Instruct` in the MRO** — HF's generic
+`prepare_inputs_for_generation` then silently drops the encoder
+`attention_mask` and `generate()` crashes (verified empirically). *Fix:* pin
+`transformers==4.53.3` (verified: imports + forward + generate all pass) and
+declare the missing core deps in `requirements.txt`.
 
 **ISSUE-06 — off-by-one in the collator: the longest sample's last token never enters `decoder_input_ids`; EOS is predicted from a pad embedding.**
 `src/data_collator.py:70-92`. **Major.**
@@ -263,7 +266,7 @@ layout decision; deferred (documented).
 2. **ISSUE-02** (Critical) — delete `output_dir` overrides in `run.sh` / `run_librispeechmix.sh`.
 3. **ISSUE-03** (Critical) — distributed init before model placement in `inference_asr_gpus.py`.
 4. **ISSUE-04** (Critical) — restore missing imports in `src/trainer_seq2seq.py`.
-5. **ISSUE-05** (Critical) — pin core dependencies in `requirements.txt`.
+5. **ISSUE-05** (Critical) — pin core dependencies (`transformers==4.53.3`) in `requirements.txt`.
 6. **ISSUE-06** (Major) — fix `decoder_input_ids` off-by-one in `src/data_collator.py`.
 7. **ISSUE-07** (Major) — batch-uniform prompt guard in `models/modeling_llama.py` (full variable-prompt support: needs author decision).
 8. **ISSUE-08** (Major) — parametrize `utils/merge_adapter.py`; pass values from `run.sh`.
@@ -274,3 +277,40 @@ layout decision; deferred (documented).
 13. **ISSUE-10** (Major) — needs author decision (documented above).
 14. **ISSUE-17/18/19/20** (Minor) — deferred / needs author decision (documented above).
 15. Add `tests/test_smoke.py` (label-serialization round-trip, collator alignment, tiny-model forward/loss).
+
+## Fixes applied
+
+Verification after all fixes: `python -m compileall .` exits 0; `finetune_asr`,
+`inference_asr`, `inference_asr_gpus` import cleanly under the pinned stack
+(`transformers==4.53.3`); `pytest tests/test_smoke.py` → **6 passed**
+(label-serialization round-trip, collator teacher-forcing alignment + prompt
+masking, tiny-model forward with hybrid CE+CTC loss, greedy `generate()`).
+
+| Issue | Severity | Status | Commit |
+|---|---|---|---|
+| ISSUE-01 | Critical | fixed | `485cb14` |
+| ISSUE-02 | Critical | fixed | `ba67b10` |
+| ISSUE-03 | Critical | fixed | `4653954` |
+| ISSUE-04 | Critical | fixed | `d42a8e2` |
+| ISSUE-05 | Critical | fixed | `57e9ae1` + `2891763` (pin corrected to 4.53.3 after the MRO finding; smoke tests added) |
+| ISSUE-06 | Major | fixed | `72334e8` |
+| ISSUE-07 | Major | fixed (guard) | `f29d538` — silent corruption replaced by a clear error when prompt lengths differ within a batch; full per-sample speech insertion is an architecture change → **needs author decision** |
+| ISSUE-08 | Major | fixed | `fc00814` |
+| ISSUE-09 | Major | fixed | `0e63af4` |
+| ISSUE-10 | Major | **needs author decision** — PCGrad is silently inactive under DDP (`hasattr(model, "encoder")` on the wrapper) and, where active, `p.grad = g` discards the CE-loss gradient on encoder/separator and bypasses DDP averaging. Activating/correcting it changes the training algorithm; not touched. |
+| ISSUE-11 | Major | fixed | `3c9156a` |
+| ISSUE-12 | Major | fixed | `143b767` |
+| ISSUE-13 | Minor | fixed | `ba0a7d4` |
+| ISSUE-14 | Minor | fixed | `ba0a7d4` |
+| ISSUE-15 | Minor | fixed | `ba0a7d4` |
+| ISSUE-16 | Minor | fixed | `ba0a7d4` |
+| ISSUE-17 | Minor | **needs author decision** — stripping the prompt from generated text before WER requires choosing the split point (e.g. on `<bos_response>` before special-token removal); affects monitoring only (model selection uses `eval_loss`). |
+| ISSUE-18 | Minor | deferred — `max_length=150` and `prompt_ids[1:-4]` are behaviour-affecting constants; changing them alters decoding results. |
+| ISSUE-19 | Minor | deferred — cluster-specific paths in `run.sh` defaults / `slurm/*` / `delte_dir.sh`; the harmful instance (stage-5/6 `output_dir` hijack) is fixed under ISSUE-02. |
+| ISSUE-20 | Minor | deferred — stage-1 output naming vs `corpus` requires a data-layout decision (suffix / wav_scp variant per corpus). |
+
+**Entry-point compatibility note:** no script names or CLI flags were removed.
+Additions only: `utils/merge_adapter.py` gained optional `--lora_r/--lora_alpha`
+(defaults preserve the old behaviour), and `run.sh` stages 4–6 now pass the
+already-existing `talker_ctc_refine`/`r_max`/`lora_alpha`/`decoder_cross_attention*`
+flags through to inference.
