@@ -67,17 +67,17 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         B = labels.shape[0]
         pad_token_id = self.processor.tokenizer.pad_token_id
 
-        # (a) decoder_input_ids = [<dec_start>, labels[:, :-1]], with -100 mapped to pad
-        decoder_input_ids = torch.full_like(labels, pad_token_id)
+        # (a)+(b) decoder_input_ids = [<dec_start>, labels] (full length L+1, -100 mapped
+        # to pad) and labels get one extra ignore column to make room for EOS.
+        # NOTE: the previous construction used labels[:, :-1] and then appended a pad
+        # column, which dropped the LAST real token of the longest row(s) from the
+        # decoder inputs: EOS was predicted from a pad embedding and the final token
+        # never conditioned anything (it also leaked into the per-speaker CTC label
+        # split, truncating the last speaker's target). Using the full labels keeps
+        # teacher forcing aligned with inference: ..., l_{L-1} -> EOS.
+        decoder_input_ids = torch.full((B, labels.shape[1] + 1), pad_token_id, dtype=labels.dtype)
         decoder_input_ids[:, 0] = self.decoder_start_token_id
-        decoder_input_ids[:, 1:] = labels[:, :-1]
-        decoder_input_ids = decoder_input_ids.masked_fill(decoder_input_ids == ignore_id, pad_token_id)
-
-        # (b) append a column to make room for EOS
-        decoder_input_ids = torch.cat(
-            [decoder_input_ids, torch.full((B, 1), pad_token_id, dtype=decoder_input_ids.dtype)],
-            dim=1,
-        )
+        decoder_input_ids[:, 1:] = labels.masked_fill(labels == ignore_id, pad_token_id)
         labels = torch.cat(
             [labels, torch.full((B, 1), ignore_id, dtype=labels.dtype)],
             dim=1,
