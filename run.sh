@@ -298,6 +298,9 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             --group_by_length \
             --predict_with_generate \
             --talker_ctc=${talker_ctc} \
+            --talker_ctc_refine=${talker_ctc_refine} \
+            --r_max="${r_max}" \
+            --lora_alpha="${lora_alpha}" \
             --talker_numbers=${talker_numbers} \
             --separator_hidden=${separator_hidden} \
             --do_train false \
@@ -360,6 +363,12 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --group_by_length \
             --predict_with_generate \
             --talker_ctc=${talker_ctc} \
+            --talker_ctc_refine=${talker_ctc_refine} \
+            --r_max="${r_max}" \
+            --lora_alpha="${lora_alpha}" \
+            --decoder_cross_attention="${decoder_cross_attention}" \
+            --decoder_cross_attention_type="${decoder_cross_attention_type}" \
+            --decoder_cross_attention_feature="${decoder_cross_attention_feature}" \
             --talker_numbers=${talker_numbers} \
             --separator_hidden=${separator_hidden} \
             --ctc_bridge="${ctc_bridge}" \
@@ -428,6 +437,9 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
             --group_by_length \
             --predict_with_generate \
             --talker_ctc=${talker_ctc} \
+            --talker_ctc_refine=${talker_ctc_refine} \
+            --r_max="${r_max}" \
+            --lora_alpha="${lora_alpha}" \
             --talker_numbers=${talker_numbers} \
             --separator_hidden=${separator_hidden} \
             --do_train false \

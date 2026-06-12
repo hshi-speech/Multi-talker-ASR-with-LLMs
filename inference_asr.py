@@ -88,6 +88,12 @@ def main():
     # 5. Load pretrained model, tokenizer, and feature extractor
     config = load_config(model_args)
     config.talker_ctc = model_args.talker_ctc
+    # Mirror the full flag set copied in finetune_asr.py so the inference model
+    # topology matches training (a missing flag here silently drops modules:
+    # mismatched checkpoint keys are ignored on load).
+    config.talker_ctc_refine = model_args.talker_ctc_refine
+    config.r_max = model_args.r_max
+    config.lora_alpha = model_args.lora_alpha
     config.talker_numbers = model_args.talker_numbers
     config.separator_hidden = model_args.separator_hidden
     config.train_mode = model_args.train_mode
