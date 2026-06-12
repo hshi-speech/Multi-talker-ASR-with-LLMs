@@ -53,6 +53,8 @@ for arg in "$@"; do
     cache_dir=*)            cache_dir="${arg#*=}" ;;
     ctc_bridge=*)           ctc_bridge="${arg#*=}" ;;
     ctc_bridge_type=*)      ctc_bridge_type="${arg#*=}" ;;
+    base_data_path=*)       base_data_path="${arg#*=}" ;;
+    decoder_base=*)         decoder_base="${arg#*=}" ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -155,10 +157,16 @@ echo "[run] precision=$precision"
 PY_BIN="$virtual_env/bin/python"
 master_port=$(( 29501 + RANDOM % 4900 ))
 
+# Overridable base paths (defaults preserve the original cluster locations)
+base_data_path="${base_data_path-/lustre/users/shi/toolkits/espnet/egs2/librimix/sot_asr1/data}"
+decoder_base="${decoder_base-/lustre/share/downloaded/models/meta-llama}"
+echo "[run] base_data_path=$base_data_path"
+echo "[run] decoder_base=$decoder_base"
+
 # 1. Data preparing
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     "$PY_BIN" utils/generate_dataset.py \
-        --base_data_path /lustre/users/shi/toolkits/espnet/egs2/librimix/sot_asr1/data \
+        --base_data_path "${base_data_path}" \
         --number ${talker_numbers} \
 	--suffix '' \
 	--wav_scp_name wav.scp \
@@ -170,7 +178,7 @@ model_ids=${encoder}-${decoder}
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
    "$PY_BIN" utils/create_from_pretrained.py \
         --encoder_id microsoft/wavlm-large \
-	--decoder_base /lustre/share/downloaded/models/meta-llama \
+	--decoder_base "${decoder_base}" \
 	--llm_id ${decoder} \
 	--save_dir dump/${model_ids} \
 	--talker_ctc \
