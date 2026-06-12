@@ -141,3 +141,21 @@ xxhash==3.5.0
 yarl==1.20.1
 zipp==3.21.0
 zstandard==0.23.0
+
+# --- Core ML stack (was missing from this freeze) -------------------------
+# The vendored HF code (utils/generation_utils.py, utils/generation_ctc_utils.py,
+# src/trainer_seq2seq.py, models/modeling_llama.py) was copied from
+# transformers ~4.46-4.49 and imports symbols removed in >=4.50
+# (e.g. QuantizedCacheConfig). Keep transformers pinned to 4.49.x.
+torch
+transformers==4.49.0
+peft
+accelerate
+datasets
+safetensors
+sentencepiece
+librosa
+soundfile
+evaluate
+jiwer
+typeguard
