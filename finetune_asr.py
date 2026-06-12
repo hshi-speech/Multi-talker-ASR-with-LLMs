@@ -162,8 +162,11 @@ def main():
         config=config,
     )
 
+    # The collator needs dataset columns that are NOT in model.forward's signature
+    # (notably `prompt_token_len`, used for per-sample prompt masking). The Trainer's
+    # default remove_unused_columns=True would drop them and crash the collator.
+    training_args.remove_unused_columns = False
     # Some Special settings for increase dataloding speed
-    # training_args.remove_unused_columns = False
     # training_args.dataloader_num_workers = 4
     # training_args.dataloader_pin_memory = True
     # training_args.group_by_length = False
