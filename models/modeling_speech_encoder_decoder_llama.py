@@ -676,6 +676,17 @@ class SpeechEncoderDecoderModelLlama(PreTrainedModel, GenerationMixin_Instruct):
                     self.config.pad_token_id,
                 )
                 _bosr_pos = (skip_eosr_ids[0] == self.bosr_token_id).nonzero(as_tuple=True)[0]
+                # Sample 0's <bos_response> position is used to slice the whole batch; guard
+                # against prompts of differing tokenized length (same assumption as the
+                # speech-embedding insertion inside the LLaMA decoder).
+                if skip_eosr_ids.size(0) > 1 and not (
+                    skip_eosr_ids[:, _bosr_pos].eq(self.bosr_token_id).all()
+                ):
+                    raise ValueError(
+                        "Per-speaker CTC label splitting assumes <bos_response> sits at the "
+                        "same position in every row of the batch (identical prompt lengths). "
+                        "This batch violates that assumption."
+                    )
                 splited_decoder_input_ids = skip_eosr_ids[:, _bosr_pos + 1:]
             else:
                 splited_decoder_input_ids = decoder_input_ids[:, 1:]

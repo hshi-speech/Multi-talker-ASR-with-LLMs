@@ -143,8 +143,22 @@ class LlamaModel(LlamaPreTrainedModel):
             if len(seq) > 6:
                 position_eoss = seq.eq(self.config.eoss_token_id).nonzero()[0] # position of eos of speech embedding
                 position_boss = seq.eq(self.config.boss_token_id).nonzero()[0] # position of bos of speech embedding
+                # The insertion below uses sample 0's positions for the WHOLE batch, which is
+                # only correct when every row tokenizes the prompt to the same length. Guard
+                # against silent misalignment if prompts ever vary within a batch.
+                if input_ids.size(0) > 1:
+                    if not (
+                        input_ids[:, position_boss].eq(self.config.boss_token_id).all()
+                        and input_ids[:, position_eoss].eq(self.config.eoss_token_id).all()
+                    ):
+                        raise ValueError(
+                            "Speech-embedding insertion assumes <bos_speech>/<eos_speech> sit at "
+                            "the same position in every row of the batch (i.e. identical prompt "
+                            "lengths). This batch violates that — per-sample insertion is not "
+                            "implemented, so refusing to silently corrupt the alignment."
+                        )
                 # len_speech_special_tokens = 0 means the speech embedding should be inserted
-                len_speech_special_tokens = (position_eoss - position_boss - 1).item() 
+                len_speech_special_tokens = (position_eoss - position_boss - 1).item()
             else:
                 # if the cache is used, from the 2-nd iteration, only one token is provided
                 # here we directly set the len_speech_special_tokens = -1
