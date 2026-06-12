@@ -187,7 +187,7 @@ def main():
                 est = model.generate_ctc(
                         inputs=input_feature,
                         prompt_ids=prompts,
-                        max_length=150,
+                        max_length=model_args.decode_max_length,
                         num_beams=1,
                         synced_gpus=False,
                         use_cache=True,
@@ -196,7 +196,7 @@ def main():
                 est = model.generate(
                         inputs=input_feature,
                         prompt_ids=prompts,
-                        max_length=150,
+                        max_length=model_args.decode_max_length,
                         num_beams=1,
                         synced_gpus=False,
                         use_cache=True,
@@ -206,6 +206,9 @@ def main():
             label_text = skip_special_tokens(label_text)
 
             if(model_args.ctc_decoding):
+                # prompt_ids = [<bos_prompt>, p1..pK, <eos_prompt>, <bos_speech>, <eos_speech>, <bos_response>]
+                # [1:-4] selects the raw prompt words p1..pK; CTC hypotheses contain no
+                # prompt, so the prompt text is removed from the reference as well.
                 label_text = label_text.replace(tokenizer.decode(vectorized_datasets["eval"][i]['prompt_ids'][1:-4]), "")
 
             est_text = tokenizer.decode(est.reshape(-1), skip_special_tokens=False)

@@ -147,6 +147,16 @@ class ModelArguments:
     ctc_decoding: bool = field(
         default=False, metadata={"help": "Whether using CTC for decoding."}
     )
+    decode_max_length: int = field(
+        default=150,
+        metadata={
+            "help": (
+                "Max total token positions (incl. BOS and prompt, excl. inserted speech "
+                "frames) for inference decoding via generate/generate_ctc. Long 2/3-speaker "
+                "serialized transcripts may need a larger budget."
+            )
+        },
+    )
     forced_decoder_ids: List[List[int]] = field(
         default=None,
         metadata={"help": "Deprecated. Please use the `language` and `task` arguments instead."},
