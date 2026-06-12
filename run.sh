@@ -55,6 +55,7 @@ for arg in "$@"; do
     ctc_bridge_type=*)      ctc_bridge_type="${arg#*=}" ;;
     base_data_path=*)       base_data_path="${arg#*=}" ;;
     decoder_base=*)         decoder_base="${arg#*=}" ;;
+    pcgrad=*)               pcgrad="${arg#*=}" ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -157,6 +158,10 @@ echo "[run] precision=$precision"
 PY_BIN="$virtual_env/bin/python"
 master_port=$(( 29501 + RANDOM % 4900 ))
 
+# PCGrad on shared encoder/separator grads (single-GPU only; default off)
+pcgrad="${pcgrad-false}"
+echo "[run] pcgrad=$pcgrad"
+
 # Overridable base paths (defaults preserve the original cluster locations)
 base_data_path="${base_data_path-/lustre/users/shi/toolkits/espnet/egs2/librimix/sot_asr1/data}"
 decoder_base="${decoder_base-/lustre/share/downloaded/models/meta-llama}"
@@ -204,6 +209,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
 	--output_dir=${output_dir} \
 	--metric_for_best_model="eval_loss" \
 	--train_mode=${train_mode} \
+	--pcgrad="${pcgrad}" \
 	--greater_is_better=false \
 	--preprocessing_num_workers="16" \
 	--audio_column_name="audio" \

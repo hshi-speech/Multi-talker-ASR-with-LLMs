@@ -396,6 +396,7 @@ class Seq2SeqTrainer(Trainer):
         callbacks: Optional[list["TrainerCallback"]] = None,
         optimizers: tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+        enable_pcgrad: bool = False,
     ):
         super().__init__(
             model=model,
@@ -410,6 +411,12 @@ class Seq2SeqTrainer(Trainer):
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
+
+        # PCGrad on the shared encoder/separator grads (see training_step). Off by
+        # default: prior multi-GPU results were trained without it (the old hasattr
+        # check never matched the DDP wrapper), and it is single-GPU only.
+        self.enable_pcgrad = enable_pcgrad
+        self._pcgrad_ddp_warned = False
 
         # Override self.model.generation_config if a GenerationConfig is specified in args.
         # Priority: args.generation_config > model.generation_config > default GenerationConfig.
@@ -1075,31 +1082,43 @@ class Seq2SeqTrainer(Trainer):
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
-            # ---------------- PCGrad (only when multi-head CTC exists) ----------------
+            # ---------------- PCGrad (opt-in via --pcgrad; multi-head CTC only) ----------------
+            # ISSUE-10: gated behind an explicit flag (default off). The previous code ran
+            # unconditionally but only ever activated in single-GPU runs, because
+            # hasattr(model, "encoder") was evaluated on the DDP wrapper. Overwriting the
+            # shared grads is also incompatible with DDP gradient averaging, so under
+            # world_size > 1 the flag is ignored with a warning.
             proj_shared = None
             shared_params = None
 
             if (
-                ctc_per_head is not None
+                self.enable_pcgrad
+                and ctc_per_head is not None
                 and isinstance(ctc_per_head, (list, tuple))
                 and len(ctc_per_head) >= 2
             ):
-                # ---------------- PCGrad: compute projected shared grads BEFORE backward ----------------
-                shared_params = []
-                if hasattr(model, "encoder"):
-                    shared_params += list(model.encoder.parameters())
-                if hasattr(model, "separator"):
-                    shared_params += list(model.separator.parameters())
+                if self.args.world_size > 1:
+                    if not self._pcgrad_ddp_warned:
+                        logger.warning(
+                            "--pcgrad is only supported for single-GPU training; "
+                            "skipping PCGrad under distributed training."
+                        )
+                        self._pcgrad_ddp_warned = True
+                else:
+                    # ---------------- PCGrad: compute projected shared grads BEFORE backward ----------------
+                    unwrapped = self.accelerator.unwrap_model(model)
+                    shared_params = []
+                    if hasattr(unwrapped, "encoder"):
+                        shared_params += list(unwrapped.encoder.parameters())
+                    if hasattr(unwrapped, "separator"):
+                        shared_params += list(unwrapped.separator.parameters())
 
-                shared_params = [p for p in shared_params if p.requires_grad]
+                    shared_params = [p for p in shared_params if p.requires_grad]
 
                 proj_shared = None
-                if (
-                    ctc_per_head is not None
-                    and isinstance(ctc_per_head, (list, tuple))
-                    and len(ctc_per_head) >= 2
-                    and len(shared_params) > 0
-                ):
+                # outer condition already checked ctc_per_head; shared_params is None
+                # when the DDP-warning branch was taken above
+                if shared_params:
                     scale = 1.0 / float(self.args.gradient_accumulation_steps)
 
                     grads = []

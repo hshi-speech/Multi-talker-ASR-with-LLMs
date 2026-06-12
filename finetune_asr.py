@@ -180,6 +180,7 @@ def main():
         processing_class=feature_extractor,
         data_collator=data_collator,
         compute_metrics=compute_metrics(tokenizer, cache_dir=model_args.cache_dir, ignore_id=model.config.ignore_token_id) if training_args.predict_with_generate else None,
+        enable_pcgrad=model_args.pcgrad,
     )
 
     # 12. Training

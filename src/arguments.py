@@ -140,6 +140,17 @@ class ModelArguments:
         default="attention",
         metadata={"help": "The mode for training: only ctc / only attention / attention-ctc hybrid: please set is as one of ctc/attention/hybrid."},
     )
+    pcgrad: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Apply PCGrad-style projection of the per-speaker CTC gradients on the shared "
+                "encoder/separator parameters (overwrites their grads after backward). "
+                "Single-GPU only; ignored (with a warning) under DDP. Default False: prior "
+                "multi-GPU results were trained without it."
+            )
+        },
+    )
     ctc_alpha: float = field(
         default=0.7,
         metadata={"help": "CTC loss weight (0–1)."},
