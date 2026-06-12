@@ -95,9 +95,10 @@ def build_multi_ctc_prefix_from_heads(
     )
 
     for b in range(B):
-        # if len(all_ids_per_b[b]) == 0:
+        if len(all_ids_per_b[b]) == 0:
             # 这个 sample 所有 head 都给不出 token，保持全 pad / 全 False
-        #     continue
+            # (torch.cat on an empty list would raise RuntimeError)
+            continue
         ids_b = torch.cat(all_ids_per_b[b], dim=0)   # [L_total_b]
         Lb = ids_b.size(0)
         prefix_ids[b, :Lb] = ids_b
