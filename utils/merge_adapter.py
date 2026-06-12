@@ -1,6 +1,7 @@
 # Created by Hao at 2025-07-07
 import torch
 import logging
+import argparse
 
 from safetensors.torch import load_file, save_file
 
@@ -8,8 +9,6 @@ import sys
 import os
 
 logger = logging.getLogger(__name__)
-
-exp_path = sys.argv[1]
 
 
 def merge_lora_weights_from_safetensors(input_safetensors, output_safetensors, lora_alpha=32, r=16):
@@ -72,12 +71,21 @@ def merge_lora_weights_from_safetensors(input_safetensors, output_safetensors, l
     logger.info("✅ LoRA weights successfully merged and saved.")
 
 
-# model_name="wavlm-llama-3.2-1B-encoder_unfreeze-decoder_freeze-adater_decoder-libri2mix_n"
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Merge self-attention LoRA weights back into the base model weights."
+    )
+    parser.add_argument("exp_path", help="Experiment dir containing model_unmerge.safetensors")
+    # Must match the values used at training time (run.sh: selfattn_lora_r / selfattn_lora_alpha).
+    # Defaults preserve the previous hardcoded behaviour (alpha=32, r=16).
+    parser.add_argument("--lora_alpha", type=float, default=32)
+    parser.add_argument("--lora_r", type=int, default=16)
+    args = parser.parse_args()
 
-model_name = exp_path
+    input_safetensors = os.path.join(args.exp_path, "model_unmerge.safetensors")
+    output_safetensors = os.path.join(args.exp_path, "model.safetensors")
 
-input_safetensors = model_name + "/model_unmerge.safetensors"
-output_safetensors = model_name + "/model.safetensors"
-
-merge_lora_weights_from_safetensors(input_safetensors, output_safetensors)
+    merge_lora_weights_from_safetensors(
+        input_safetensors, output_safetensors, lora_alpha=args.lora_alpha, r=args.lora_r
+    )
 

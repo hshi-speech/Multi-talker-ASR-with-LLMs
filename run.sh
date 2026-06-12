@@ -244,7 +244,8 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
 	--do_lower_case
 
     if [ "${train_mode}" != "ctc" ] && [ "${adapter_only_decoder}" = "true" ]; then
-	"$PY_BIN" utils/merge_adapter.py ${output_dir}
+	"$PY_BIN" utils/merge_adapter.py ${output_dir} \
+	    --lora_r "${selfattn_lora_r}" --lora_alpha "${selfattn_lora_alpha}"
     fi
     "$PY_BIN" utils/fix_safetensors_metadata.py --output_dir ${output_dir}
     cp ${pretrain_model_path}/generation_config.json ${output_dir}
