@@ -212,7 +212,6 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
 
 fi
 
-output_dir=/lustre/users/shi/toolkits/m_speaker_llm/Multi-talker-ASR-with-LLMs/ckpt_cheking
 # CTC decoding
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     _set="validation test"
