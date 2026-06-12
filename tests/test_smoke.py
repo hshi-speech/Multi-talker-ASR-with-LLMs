@@ -170,6 +170,25 @@ def test_collator_prompt_masking():
 
 
 # ---------------------------------------------------------------------------
+# 2b. Eval-WER prompt stripping (ISSUE-17)
+# ---------------------------------------------------------------------------
+def test_strip_prompt_prefix():
+    import numpy as np
+    from utils.metric_utils import strip_prompt_prefix
+
+    BOSR = 9
+    preds = np.array([
+        [1, 7, 8, BOSR, 10, 11, 12],   # prompt 7,8 then response
+        [1, 20, 21, 22, 23, 24, 25],   # no <bos_response> -> untouched
+    ])
+    out = strip_prompt_prefix(preds, bos_response_id=BOSR, pad_id=PAD)
+    assert out[0].tolist() == [PAD, PAD, PAD, PAD, 10, 11, 12]
+    assert out[1].tolist() == preds[1].tolist()
+    # input must not be modified in place
+    assert preds[0, 0] == 1
+
+
+# ---------------------------------------------------------------------------
 # 3. Forward pass (hybrid CE+CTC loss) on a tiny randomly-initialized model
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="module")
