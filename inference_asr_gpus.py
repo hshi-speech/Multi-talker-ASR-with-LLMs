@@ -133,9 +133,11 @@ def main():
     model = load_aed_model(model_args, config, logger)
     model.eval()
 
-    # Setting CUDA
-    model = model.to("cuda")
-    device = model.device
+    # Setting CUDA — initialize the process group (which calls
+    # torch.cuda.set_device(local_rank)) BEFORE placing the model, otherwise
+    # every rank loads the model onto cuda:0 while inputs go to cuda:local_rank.
+    is_dist, rank, world_size, local_rank, device = setup_distributed()
+    model = model.to(device)
 
     # 7. Some other settings for configuration
     # Here we write a new get_input_embeddings for fix the undefined of pre-defined function of SpeechEncoderDecoderModel
@@ -180,8 +182,6 @@ def main():
             if token in allowed_special_tokens or not (token.startswith("<") and token.endswith(">"))
             )
         return processed_text
-
-    is_dist, rank, world_size, local_rank, device = setup_distributed()
 
     # 12. Inference
     _set = os.path.basename(data_args.dataset_name)
